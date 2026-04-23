@@ -1,0 +1,31 @@
+# Python bytecode/cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Tooling/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local runtime/config artifacts
+config.yaml
+data/
+logs/
+
+# Internal planning docs (not for public repo)
+PROJECT.md
+PROJECT_STRUCTURE.md
+DEVELOPMENT_SUMMARY.md
+
