@@ -9,6 +9,11 @@ Reference files:
 - references/output_schema.md
 - references/safety_policy.md
 
+Prompt templates:
+- prompts/distill_prompt.txt
+- prompts/relation_prompt.txt
+- prompts/correction_prompt.txt
+
 Example files:
 - examples/sample_input_excerpt.txt
 - examples/sample_character_profile.json
@@ -17,4 +22,3 @@ Example files:
 Packaging intent:
 - Self-contained skill-definition bundle
 - No required runtime download from external repositories
-

@@ -77,9 +77,44 @@ Trigger this skill when user asks for:
 - 角色群聊设定或 OOC 纠错规则
 - 输出结构化 JSON 角色档案
 
+Natural-language trigger mapping:
+- "帮我蒸馏这本小说人物" -> `distill`
+- "抽关系网" / "角色关系图" -> `extract_relations`
+- "按人设群聊" / "角色模拟对话" -> `chat_constraints`
+- "这句 OOC 了，帮我纠正" -> `correct_ooc`
+
+Command-style trigger mapping:
+- `/distill` -> run Phase 0~2 and output profiles
+- `/extract` -> run Phase 0,3 and output relations
+- `/chat` -> run dialogue constraints and correction memory retrieval
+- `/correct` -> append correction memory with rationale
+
+## Update Workflow
+
+Use this workflow when user asks to "update/迭代/修订" the skill output:
+
+1. Diff request
+- Identify which target changes: schema, extraction logic, or safety rule.
+
+2. Minimal patch
+- Apply smallest valid change while preserving output compatibility.
+- Prefer editing `references/` and `prompts/` first, then adjust SKILL steps.
+
+3. Regression check
+- Re-run against sample artifacts in `examples/`.
+- Ensure keys/ranges still satisfy `references/output_schema.md`.
+
+4. Version note
+- Add a one-line release note in `PUBLISH.txt` version section.
+
 ## Example Artifacts
 
 - `examples/sample_input_excerpt.txt`
 - `examples/sample_character_profile.json`
 - `examples/sample_relations.json`
 
+## Prompt Templates
+
+- `prompts/distill_prompt.txt`
+- `prompts/relation_prompt.txt`
+- `prompts/correction_prompt.txt`
