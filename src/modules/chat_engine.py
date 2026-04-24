@@ -247,6 +247,7 @@ class ChatEngine:
 
     def _save_session(self, session: Dict[str, Any]) -> None:
         save_json(self.sessions_dir / f"{session['id']}.json", session)
+        self._save_relation_snapshot(session)
 
     def _load_character_profiles(self) -> Dict[str, Dict[str, Any]]:
         profiles: Dict[str, Dict[str, Any]] = {}
@@ -276,6 +277,17 @@ class ChatEngine:
                     "ambiguity": int(disk.get("ambiguity", 3)),
                 }
         return matrix
+
+    def _save_relation_snapshot(self, session: Dict[str, Any]) -> None:
+        """Persist relation state as a dedicated session artifact for replay/debug."""
+        state = session.get("state", {})
+        payload = {
+            "session_id": session.get("id"),
+            "updated_at": int(time.time()),
+            "relation_matrix": state.get("relation_matrix", {}),
+            "relation_delta": state.get("relation_delta", {}),
+        }
+        save_json(self.sessions_dir / f"{session['id']}_relations.json", payload)
 
     def _get_relation_state_from_disk(self, speaker: str, target: str) -> Dict[str, Any]:
         rel_file = self._latest_relations_file()
