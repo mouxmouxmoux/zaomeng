@@ -1,4 +1,4 @@
-# Dreamforge
+# zaomeng
 
 [中文](README.zh.md) | [English](README.en.md)
 
@@ -102,7 +102,7 @@ python scripts/install_skill.py --project-root <your-project-root>
 To override the installed skill folder name:
 
 ```bash
-python scripts/install_skill.py --project-root <your-project-root> --skill-name dreamforge-skill
+python scripts/install_skill.py --project-root <your-project-root> --skill-name zaomeng-skill
 ```
 
 If you prefer not to run the installer script, you can integrate manually:

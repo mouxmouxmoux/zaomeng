@@ -1,4 +1,4 @@
-# Dreamforge
+# zaomeng
 
 [中文](README.zh.md) | [English](README.en.md)
 
@@ -102,7 +102,7 @@ python scripts/install_skill.py --project-root <your-project-root>
 如果你想自定义 skill 名称：
 
 ```bash
-python scripts/install_skill.py --project-root <your-project-root> --skill-name dreamforge-skill
+python scripts/install_skill.py --project-root <your-project-root> --skill-name zaomeng-skill
 ```
 
 如果你不想运行安装脚本，也可以手动接入：

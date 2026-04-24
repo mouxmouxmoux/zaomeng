@@ -91,7 +91,7 @@ class Config:
             "config.yaml",
             "config.yml",
             "config/config.yaml",
-            os.path.expanduser("~/.dreamforge/config.yaml")
+            os.path.expanduser("~/.zaomeng/config.yaml")
         ]
         
         for path in possible_paths:

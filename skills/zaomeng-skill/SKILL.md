@@ -1,11 +1,11 @@
 ---
 name: zaomeng-skill
-description: Dreamforge local skill for character distillation, relationship extraction, and roleplay chat workflows.
+description: zaomeng local skill for character distillation, relationship extraction, and roleplay chat workflows.
 ---
 
 # Zaomeng Skill
 
-Use this skill to run Dreamforge's local workflow without cloud model dependencies.
+Use this skill to run zaomeng's local workflow without cloud model dependencies.
 
 ## Commands
 

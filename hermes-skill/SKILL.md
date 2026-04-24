@@ -1,6 +1,6 @@
 ---
-name: hermes-dreamforge
-description: Hermes Agent adapter for Dreamforge local novel distillation, relation extraction, and roleplay chat.
+name: hermes-zaomeng
+description: Hermes Agent adapter for zaomeng local novel distillation, relation extraction, and roleplay chat.
 ---
 
 # Hermes Adapter

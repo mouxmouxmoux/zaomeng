@@ -25,7 +25,7 @@ def copy_skill_dir(src: Path, dst_root: Path, skill_name: str) -> Path:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Install Dreamforge adapters for OpenClaw, Hermes Agent, or a local project skills directory"
+        description="Install zaomeng adapters for OpenClaw, Hermes Agent, or a local project skills directory"
     )
     parser.add_argument("--openclaw-dir", help="OpenClaw skills root directory")
     parser.add_argument("--hermes-dir", help="Hermes Agent skills root directory")

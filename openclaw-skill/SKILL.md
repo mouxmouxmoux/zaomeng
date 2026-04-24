@@ -1,6 +1,6 @@
 ---
-name: openclaw-dreamforge
-description: OpenClaw adapter for Dreamforge local character distillation, relationship extraction, and roleplay chat.
+name: openclaw-zaomeng
+description: OpenClaw adapter for zaomeng local character distillation, relationship extraction, and roleplay chat.
 ---
 
 # OpenClaw Adapter

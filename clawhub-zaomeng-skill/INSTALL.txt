@@ -14,7 +14,7 @@ Required files in this folder:
 - examples/test-prompts.json
 
 Optional local integration:
-- If you already host Dreamforge locally, map this skill to your local commands.
+- If you already host zaomeng locally, map this skill to your local commands.
 - Keep execution policy local-only by default.
 
 Quick validation checklist:

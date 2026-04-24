@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Dreamforge CLI entrypoint."""
+"""zaomeng CLI entrypoint."""
 
 from __future__ import annotations
 
@@ -21,14 +21,14 @@ from src.modules.relationships import RelationshipExtractor
 from src.utils.file_utils import find_character_file, novel_id_from_input
 
 
-class DreamForgeCLI:
+class ZaomengCLI:
     def __init__(self) -> None:
         self.config = Config()
         self.parser = self._create_parser()
 
     def _create_parser(self) -> argparse.ArgumentParser:
         parser = argparse.ArgumentParser(
-            description="Dreamforge: local novel character distillation and chat tooling",
+            description="zaomeng: local novel character distillation and chat tooling",
             epilog="See PROJECT.md for project notes.",
         )
         subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -209,7 +209,7 @@ class DreamForgeCLI:
 
 
 def main() -> None:
-    DreamForgeCLI().run()
+    ZaomengCLI().run()
 
 
 if __name__ == "__main__":
