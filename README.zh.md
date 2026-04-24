@@ -1,6 +1,6 @@
 # Dreamforge
 
-[中文](README.md) | [English](README.en.md)
+[中文](README.zh.md) | [English](README.en.md)
 
 本地小说人物蒸馏、关系抽取和角色群聊工具链。当前版本基于本地规则引擎运行，不依赖云端模型或 API Key。
 

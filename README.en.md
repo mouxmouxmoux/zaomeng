@@ -1,10 +1,10 @@
 # Dreamforge
 
-[中文](README.md) | [English](README.en.md)
+[中文](README.zh.md) | [English](README.en.md)
 
-本地小说人物蒸馏、关系抽取和角色群聊工具链。当前版本基于本地规则引擎运行，不依赖云端模型或 API Key。
+Local toolkit for novel character distillation, relationship extraction, and roleplay chat. The current version runs on a local rule engine and does not require any cloud model or API key.
 
-## 快速开始
+## Quick Start
 
 ```bash
 pip install -r requirements.txt
@@ -13,44 +13,44 @@ python -m src.core.main distill --novel data/sample_novel.txt --force
 python -m src.core.main extract --novel data/sample_novel.txt --force
 ```
 
-Windows 复制配置文件：
+On Windows:
 
 ```powershell
 Copy-Item config.yaml.example config.yaml
 ```
 
-## 快速接入
+## Quick Integration
 
-仓库地址：
+Repository:
 
 ```text
 https://github.com/wkbin/Dreamforge.git
 ```
 
-### 接入 OpenClaw
+### OpenClaw
 
-自动安装：
+Automatic install:
 
 ```bash
 python scripts/install_skill.py --openclaw-dir <openclaw-skills-root>
 ```
 
-手动安装，二选一：
+Manual install, choose one:
 
 ```bash
-# 方式 1：克隆仓库后复制
+# Option 1: clone the repo and copy the adapter
 git clone https://github.com/wkbin/Dreamforge.git
 mkdir -p <openclaw-skills-root>/zaomeng-skill
 cp Dreamforge/openclaw-skill/SKILL.md <openclaw-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 ```bash
-# 方式 2：直接下载单文件
+# Option 2: download only the adapter file
 mkdir -p <openclaw-skills-root>/zaomeng-skill
 curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/openclaw-skill/SKILL.md -o <openclaw-skills-root>/zaomeng-skill/SKILL.md
 ```
 
-OpenClaw 中对应的命令映射：
+Command mapping inside OpenClaw:
 
 ```bash
 python -m src.core.main distill --novel <path> [--characters A,B] [--force]
@@ -60,67 +60,67 @@ python -m src.core.main view --character <name> [--novel <path-or-name>]
 python -m src.core.main correct --session <id> --message <raw> --corrected <fixed>
 ```
 
-### 接入 Hermes Agent
+### Hermes Agent
 
-自动安装：
+Automatic install:
 
 ```bash
 python scripts/install_skill.py --hermes-dir <hermes-skills-root>
 ```
 
-手动安装，二选一：
+Manual install, choose one:
 
 ```bash
-# 方式 1：克隆仓库后复制
+# Option 1: clone the repo and copy the adapter
 git clone https://github.com/wkbin/Dreamforge.git
 mkdir -p <hermes-skills-root>/zaomeng-skill
 cp Dreamforge/hermes-skill/SKILL.md <hermes-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 ```bash
-# 方式 2：直接下载单文件
+# Option 2: download only the adapter file
 mkdir -p <hermes-skills-root>/zaomeng-skill
 curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/hermes-skill/SKILL.md -o <hermes-skills-root>/zaomeng-skill/SKILL.md
 ```
 
-Hermes 侧命令映射与 OpenClaw 相同。
+Hermes uses the same command mapping as OpenClaw.
 
-### 接入你自己的项目
+### Your Own Project
 
-如果你的项目已经有 `skills/` 目录：
+If your project already has a `skills/` root:
 
 ```bash
 python scripts/install_skill.py --skills-dir <your-skills-root>
 ```
 
-如果你想直接装进项目根目录：
+If you want to install directly into a project root:
 
 ```bash
 python scripts/install_skill.py --project-root <your-project-root>
 ```
 
-如果你想自定义 skill 名称：
+To override the installed skill folder name:
 
 ```bash
 python scripts/install_skill.py --project-root <your-project-root> --skill-name dreamforge-skill
 ```
 
-如果你不想运行安装脚本，也可以手动接入：
+If you prefer not to run the installer script, you can integrate manually:
 
 ```bash
-# 方式 1：克隆仓库后复制整个通用 skill 目录
+# Option 1: clone the repo and copy the whole generic skill directory
 git clone https://github.com/wkbin/Dreamforge.git
 mkdir -p <your-project-root>/skills
 cp -r Dreamforge/skills/zaomeng-skill <your-project-root>/skills/
 ```
 
 ```bash
-# 方式 2：只下载单文件版本
+# Option 2: download only the generic SKILL.md
 mkdir -p <your-project-root>/skills/zaomeng-skill
 curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/skills/zaomeng-skill/SKILL.md -o <your-project-root>/skills/zaomeng-skill/SKILL.md
 ```
 
-## 核心命令
+## Core Commands
 
 ```bash
 python -m src.core.main distill --novel data/sample_novel.txt --force
@@ -129,38 +129,38 @@ python -m src.core.main extract --novel data/sample_novel.txt --force
 python -m src.core.main chat --novel data/sample_novel.txt --mode observe
 python -m src.core.main chat --novel data/sample_novel.txt --mode act --character 林黛玉
 python -m src.core.main view --character 林黛玉 --novel data/sample_novel.txt
-python -m src.core.main correct --session <ID> --message "<原句>" --corrected "<修正句>" --character 林黛玉
+python -m src.core.main correct --session <ID> --message "<raw>" --corrected "<fixed>" --character 林黛玉
 ```
 
-群聊内联命令：
+Inline chat commands:
 
 - `/save`
 - `/reflect`
 - `/correct 角色|对象|原句|修正句|原因`
 - `/quit`
 
-## 输出目录
+## Output Layout
 
-当前版本按小说隔离产物，避免多本小说串档：
+Artifacts are isolated by novel to avoid cross-novel contamination:
 
 - `data/characters/<novel_id>/`
 - `data/relations/<novel_id>/`
 - `data/sessions/`
 - `data/corrections/`
 
-例如 `data/sample_novel.txt` 的默认输出为：
+For `data/sample_novel.txt`, the default output is:
 
 - `data/characters/sample_novel/*.json`
 - `data/relations/sample_novel/sample_novel_relations.json`
 
-## 当前实现说明
+## Current Implementation Notes
 
-- 输入格式支持 `.txt` 和 `.epub`
-- 角色蒸馏会写入 `novel_id`、`source_path` 和基础证据计数
-- 关系抽取只为同句共现的角色对建立关系
-- 群聊会优先加载指定小说命名空间下的人物与关系文件
+- Input formats: `.txt` and `.epub`
+- Distilled profiles include `novel_id`, `source_path`, and lightweight evidence counters
+- Relationships are created only for character pairs that co-occur in the same sentence
+- Chat sessions load character and relationship assets from the scoped novel namespace first
 
-## 项目结构
+## Project Structure
 
 ```text
 src/core/main.py

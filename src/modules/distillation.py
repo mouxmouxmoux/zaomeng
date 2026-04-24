@@ -6,11 +6,12 @@ from __future__ import annotations
 import math
 import re
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.config import Config
 from src.core.llm_client import LLMClient
-from src.utils.file_utils import ensure_dir, save_json
+from src.utils.file_utils import ensure_dir, novel_id_from_input, safe_filename, save_json
 from src.utils.text_parser import load_novel_text, split_sentences
 from src.utils.token_counter import TokenCounter
 
@@ -81,10 +82,13 @@ class NovelDistiller:
         text = load_novel_text(novel_path)
         chunks = self._chunk_text(text)
         self._last_chunk_count = len(chunks)
+        novel_id = novel_id_from_input(novel_path)
 
         target_characters = [c.strip() for c in characters if c.strip()] if characters else None
         if not target_characters:
             target_characters = self._extract_top_characters(text)
+        if not target_characters:
+            raise ValueError("No character candidates were extracted from the novel text")
 
         aggregated = {name: self._empty_bucket() for name in target_characters}
         arc_points: Dict[str, List[Tuple[int, Dict[str, int]]]] = defaultdict(list)
@@ -102,12 +106,21 @@ class NovelDistiller:
                 arc_points[name].append((idx, chunk_values.get(name, {})))
 
         profiles: Dict[str, Dict[str, Any]] = {}
-        out_dir = ensure_dir(output_dir or self.config.get_path("characters"))
+        base_dir = Path(output_dir) if output_dir else Path(self.config.get_path("characters")) / novel_id
+        out_dir = ensure_dir(base_dir)
 
         for name in target_characters:
             profile = self._build_profile(name, aggregated[name], arc_points.get(name, []))
+            profile["novel_id"] = novel_id
+            profile["source_path"] = novel_path
+            profile["evidence"] = {
+                "description_count": len(aggregated[name]["descriptions"]),
+                "dialogue_count": len(aggregated[name]["dialogues"]),
+                "thought_count": len(aggregated[name]["thoughts"]),
+                "chunk_count": len(arc_points.get(name, [])),
+            }
             profiles[name] = profile
-            save_json(out_dir / f"{name}.json", profile)
+            save_json(out_dir / f"{safe_filename(name)}.json", profile)
 
         return profiles
 

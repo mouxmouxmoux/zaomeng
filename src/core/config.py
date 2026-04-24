@@ -52,6 +52,7 @@ class Config:
         },
         "chat_engine": {
             "max_history_turns": 10,
+            "max_speakers_per_turn": 4,
             "token_limit_per_turn": 500,
             "enable_cost_display": True
         },

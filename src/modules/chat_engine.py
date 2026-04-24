@@ -12,11 +12,13 @@ from src.core.config import Config
 from src.core.llm_client import LLMClient
 from src.modules.reflection import ReflectionEngine
 from src.modules.speaker import Speaker
-from src.utils.file_utils import ensure_dir, load_json, save_json
+from src.utils.file_utils import ensure_dir, load_json, novel_id_from_input, save_json
 
 
 class ChatEngine:
-    """Multi-character chat with observe/act modes and inline commands."""
+    """Multi-character chat with novel-scoped assets."""
+
+    SYSTEM_SPEAKERS = {"Narrator", "User", "旁白", "用户"}
 
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config()
@@ -28,14 +30,17 @@ class ChatEngine:
         self.relations_dir = ensure_dir(self.config.get_path("relations"))
 
     def create_session(self, novel: str, mode: str) -> Dict[str, Any]:
-        profiles = self._load_character_profiles()
+        novel_id = novel_id_from_input(novel)
+        profiles = self._load_character_profiles(novel_id)
         if not profiles:
-            raise RuntimeError("未找到角色档案，请先运行 distill。")
+            raise RuntimeError(f"No character profiles found for novel '{novel_id}'. Run distill first.")
+
         characters = list(profiles.keys())
         session = {
             "id": uuid.uuid4().hex[:12],
             "title": f"{novel}_{mode}_{int(time.time())}",
             "novel": novel,
+            "novel_id": novel_id,
             "mode": mode,
             "created_at": int(time.time()),
             "characters": characters,
@@ -43,7 +48,7 @@ class ChatEngine:
             "state": {
                 "emotion": {},
                 "relation_delta": {},
-                "relation_matrix": self._build_relation_matrix(characters),
+                "relation_matrix": self._build_relation_matrix(characters, novel_id),
             },
         }
         self._save_session(session)
@@ -53,7 +58,8 @@ class ChatEngine:
         path = self.sessions_dir / f"{session_id}.json"
         data = load_json(path, default=None)
         if not data:
-            raise FileNotFoundError(f"会话不存在: {session_id}")
+            raise FileNotFoundError(f"Session not found: {session_id}")
+        data.setdefault("novel_id", novel_id_from_input(data.get("novel", session_id)))
         return data
 
     def observe_mode(self, session: Dict[str, Any]) -> None:
@@ -67,9 +73,9 @@ class ChatEngine:
                     break
                 continue
 
-            session["history"].append({"speaker": "旁白", "message": user_msg, "ts": int(time.time())})
-            profiles = self._load_character_profiles()
-            for name in session["characters"][:4]:
+            session["history"].append({"speaker": "Narrator", "message": user_msg, "ts": int(time.time())})
+            profiles = self._load_character_profiles(session.get("novel_id"))
+            for name in self._active_characters(session):
                 profile = profiles.get(name, {"name": name})
                 target_name = self._infer_target(name, session["history"], session["characters"])
                 relation_state = self._get_relation_state(session, name, target_name)
@@ -79,7 +85,7 @@ class ChatEngine:
                     history=session["history"],
                     target_name=target_name,
                     relation_state=relation_state,
-                    relation_hint=self._relation_hint(name, session["characters"]),
+                    relation_hint=self._relation_hint(name, session["characters"], session.get("novel_id")),
                 )
                 reply = self._guard_reply(profile, reply, relation_state, target_name)
                 print(f"{name}: {reply}")
@@ -87,6 +93,7 @@ class ChatEngine:
                     {"speaker": name, "target": target_name, "message": reply, "ts": int(time.time())}
                 )
 
+            self._trim_history(session)
             self._update_state(session)
             self._save_session(session)
             self._print_turn_cost()
@@ -103,8 +110,8 @@ class ChatEngine:
                 continue
 
             session["history"].append({"speaker": character, "message": user_msg, "ts": int(time.time())})
-            profiles = self._load_character_profiles()
-            for name in session["characters"][:4]:
+            profiles = self._load_character_profiles(session.get("novel_id"))
+            for name in self._active_characters(session):
                 if name == character:
                     continue
                 profile = profiles.get(name, {"name": name})
@@ -116,7 +123,7 @@ class ChatEngine:
                     history=session["history"],
                     target_name=target_name,
                     relation_state=relation_state,
-                    relation_hint=self._relation_hint(name, session["characters"]),
+                    relation_hint=self._relation_hint(name, session["characters"], session.get("novel_id")),
                 )
                 reply = self._guard_reply(profile, reply, relation_state, target_name)
                 print(f"{name}: {reply}")
@@ -124,6 +131,7 @@ class ChatEngine:
                     {"speaker": name, "target": target_name, "message": reply, "ts": int(time.time())}
                 )
 
+            self._trim_history(session)
             self._update_state(session)
             self._save_session(session)
             self._print_turn_cost()
@@ -141,7 +149,6 @@ class ChatEngine:
             self._reflect_last_turn(session)
             return True
         if command.startswith("/correct"):
-            # /correct 角色|对象|原句|修正句|原因
             payload = command[len("/correct") :].strip()
             parts = [p.strip() for p in payload.split("|")]
             if len(parts) not in (3, 4, 5):
@@ -167,9 +174,9 @@ class ChatEngine:
 
     def _reflect_last_turn(self, session: Dict[str, Any]) -> None:
         if not session["history"]:
-            print("无历史可反思。")
+            print("暂无历史可反思。")
             return
-        profiles = self._load_character_profiles()
+        profiles = self._load_character_profiles(session.get("novel_id"))
         last = session["history"][-1]
         profile = profiles.get(last["speaker"])
         if not profile:
@@ -183,20 +190,27 @@ class ChatEngine:
         for reason in check.reasons:
             print(f"- {reason}")
 
-    def _relation_hint(self, speaker: str, all_chars: List[str]) -> str:
+    def _relation_hint(self, speaker: str, all_chars: List[str], novel_id: Optional[str]) -> str:
         hints = []
         for other in all_chars:
             if other == speaker:
                 continue
-            item = self._get_relation_state_from_disk(speaker, other)
+            item = self._get_relation_state_from_disk(speaker, other, novel_id)
             if item:
                 hints.append(
-                    f"{other}(trust={item.get('trust',5)},aff={item.get('affection',5)},host={item.get('hostility', max(0, 5-item.get('affection',5)))})"
+                    f"{other}(trust={item.get('trust', 5)},aff={item.get('affection', 5)},host={item.get('hostility', max(0, 5 - item.get('affection', 5)))})"
                 )
         return "; ".join(hints[:3])
 
-    def _latest_relations_file(self) -> Optional[Path]:
-        files = sorted(self.relations_dir.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True)
+    def _relation_file_for_novel(self, novel_id: Optional[str]) -> Optional[Path]:
+        if novel_id:
+            scoped = self.relations_dir / novel_id / f"{novel_id}_relations.json"
+            if scoped.exists():
+                return scoped
+            legacy = self.relations_dir / f"{novel_id}_relations.json"
+            if legacy.exists():
+                return legacy
+        files = sorted(self.relations_dir.glob("*.json"), key=lambda path: path.stat().st_mtime, reverse=True)
         return files[0] if files else None
 
     def _update_state(self, session: Dict[str, Any]) -> None:
@@ -205,43 +219,47 @@ class ChatEngine:
         relation_matrix = session["state"].setdefault("relation_matrix", {})
         for item in latest:
             speaker = item["speaker"]
-            if speaker in ("旁白", "用户"):
+            if speaker in self.SYSTEM_SPEAKERS:
                 continue
+
             delta = 0
             msg = item["message"]
-            if any(k in msg for k in ("！", "愤怒", "生气", "质问")):
+            if any(k in msg for k in ("！", "怒", "生气", "质问")):
                 delta += 1
             if any(k in msg for k in ("冷静", "平静", "慢慢说", "理解")):
                 delta -= 1
             emotion[speaker] = max(-5, min(5, emotion.get(speaker, 0) + delta))
+
             target = item.get("target") or self._infer_target(speaker, latest, session["characters"])
-            if target and target != speaker:
-                key = self._pair_key(speaker, target)
-                state = relation_matrix.setdefault(
-                    key,
-                    {"trust": 5, "affection": 5, "hostility": 0, "ambiguity": 3},
-                )
-                if any(k in msg for k in ("谢谢", "抱歉", "理解", "关心", "在意")):
-                    state["affection"] = min(10, state.get("affection", 5) + 1)
-                    state["trust"] = min(10, state.get("trust", 5) + 1)
-                    state["hostility"] = max(0, state.get("hostility", 0) - 1)
-                if any(k in msg for k in ("滚", "讨厌", "厌恶", "闭嘴", "烦")):
-                    state["hostility"] = min(10, state.get("hostility", 0) + 2)
-                    state["affection"] = max(0, state.get("affection", 5) - 2)
-                    state["trust"] = max(0, state.get("trust", 5) - 1)
-                if any(k in msg for k in ("也许", "或许", "未必", "以后再说")):
-                    state["ambiguity"] = min(10, state.get("ambiguity", 3) + 1)
-                session["state"]["relation_delta"][key] = {
-                    "trust": state["trust"],
-                    "affection": state["affection"],
-                    "hostility": state["hostility"],
-                    "ambiguity": state["ambiguity"],
-                }
+            if not target or target == speaker:
+                continue
+
+            key = self._pair_key(speaker, target)
+            state = relation_matrix.setdefault(
+                key,
+                {"trust": 5, "affection": 5, "hostility": 0, "ambiguity": 3},
+            )
+            if any(k in msg for k in ("谢谢", "抱歉", "理解", "关心", "在意")):
+                state["affection"] = min(10, state.get("affection", 5) + 1)
+                state["trust"] = min(10, state.get("trust", 5) + 1)
+                state["hostility"] = max(0, state.get("hostility", 0) - 1)
+            if any(k in msg for k in ("滚", "讨厌", "厌恶", "闭嘴", "烦")):
+                state["hostility"] = min(10, state.get("hostility", 0) + 2)
+                state["affection"] = max(0, state.get("affection", 5) - 2)
+                state["trust"] = max(0, state.get("trust", 5) - 1)
+            if any(k in msg for k in ("也许", "或许", "未必", "以后再说")):
+                state["ambiguity"] = min(10, state.get("ambiguity", 3) + 1)
+            session["state"]["relation_delta"][key] = {
+                "trust": state["trust"],
+                "affection": state["affection"],
+                "hostility": state["hostility"],
+                "ambiguity": state["ambiguity"],
+            }
 
     def _print_turn_cost(self) -> None:
         summary = self.llm.get_cost_summary()
         print(
-            f"[本轮后累计] token={summary['total_tokens']} "
+            f"[累计] token={summary['total_tokens']} "
             f"session=${summary['session_cost']:.4f} daily=${summary['daily_cost']:.4f}"
         )
 
@@ -249,11 +267,29 @@ class ChatEngine:
         save_json(self.sessions_dir / f"{session['id']}.json", session)
         self._save_relation_snapshot(session)
 
-    def _load_character_profiles(self) -> Dict[str, Dict[str, Any]]:
+    def _load_character_profiles(self, novel_id: Optional[str] = None) -> Dict[str, Dict[str, Any]]:
         profiles: Dict[str, Dict[str, Any]] = {}
         if not self.characters_dir.exists():
             return profiles
-        for file in self.characters_dir.glob("*.json"):
+
+        if novel_id:
+            scoped_dir = self.characters_dir / novel_id
+            files = sorted(scoped_dir.glob("*.json"))
+            if not files:
+                legacy_files = sorted(self.characters_dir.glob("*.json"))
+                for file in legacy_files:
+                    item = load_json(file, default=None)
+                    if not item or not isinstance(item, dict) or not item.get("name"):
+                        continue
+                    item_novel_id = item.get("novel_id")
+                    if item_novel_id == novel_id or item_novel_id is None:
+                        profiles[item["name"]] = item
+                return profiles
+        else:
+            files = sorted(self.characters_dir.glob("*.json"))
+            files.extend(sorted(self.characters_dir.glob("*/*.json")))
+
+        for file in files:
             item = load_json(file, default=None)
             if item and isinstance(item, dict) and item.get("name"):
                 profiles[item["name"]] = item
@@ -263,13 +299,13 @@ class ChatEngine:
     def _pair_key(a: str, b: str) -> str:
         return "_".join(sorted([a, b]))
 
-    def _build_relation_matrix(self, characters: List[str]) -> Dict[str, Dict[str, Any]]:
+    def _build_relation_matrix(self, characters: List[str], novel_id: Optional[str]) -> Dict[str, Dict[str, Any]]:
         matrix: Dict[str, Dict[str, Any]] = {}
         for speaker in characters:
             for target in characters:
                 if speaker == target:
                     continue
-                disk = self._get_relation_state_from_disk(speaker, target) or {}
+                disk = self._get_relation_state_from_disk(speaker, target, novel_id) or {}
                 matrix[self._pair_key(speaker, target)] = {
                     "trust": int(disk.get("trust", 5)),
                     "affection": int(disk.get("affection", 5)),
@@ -279,18 +315,22 @@ class ChatEngine:
         return matrix
 
     def _save_relation_snapshot(self, session: Dict[str, Any]) -> None:
-        """Persist relation state as a dedicated session artifact for replay/debug."""
-        state = session.get("state", {})
         payload = {
             "session_id": session.get("id"),
+            "novel_id": session.get("novel_id"),
             "updated_at": int(time.time()),
-            "relation_matrix": state.get("relation_matrix", {}),
-            "relation_delta": state.get("relation_delta", {}),
+            "relation_matrix": session.get("state", {}).get("relation_matrix", {}),
+            "relation_delta": session.get("state", {}).get("relation_delta", {}),
         }
         save_json(self.sessions_dir / f"{session['id']}_relations.json", payload)
 
-    def _get_relation_state_from_disk(self, speaker: str, target: str) -> Dict[str, Any]:
-        rel_file = self._latest_relations_file()
+    def _get_relation_state_from_disk(
+        self,
+        speaker: str,
+        target: str,
+        novel_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        rel_file = self._relation_file_for_novel(novel_id)
         if not rel_file:
             return {}
         rel = load_json(rel_file, default={})
@@ -301,6 +341,15 @@ class ChatEngine:
             return {}
         matrix = session["state"].setdefault("relation_matrix", {})
         return matrix.get(self._pair_key(speaker, target), {})
+
+    def _active_characters(self, session: Dict[str, Any]) -> List[str]:
+        limit = int(self.config.get("chat_engine.max_speakers_per_turn", 4))
+        return session["characters"][: max(1, limit)]
+
+    def _trim_history(self, session: Dict[str, Any]) -> None:
+        turns = int(self.config.get("chat_engine.max_history_turns", 10))
+        keep = max(10, turns * (len(self._active_characters(session)) + 1))
+        session["history"] = session["history"][-keep:]
 
     @staticmethod
     def _infer_target(speaker: str, history: List[Dict[str, Any]], all_chars: List[str]) -> str:
@@ -330,7 +379,7 @@ class ChatEngine:
         checked_after = self.reflection.detect_ooc(profile, rewritten)
         if issues_after or checked_after.is_ooc:
             reasons = issues_after + checked_after.reasons
-            return f"{rewritten}（needs_revision: {'; '.join(reasons[:2])}）"
+            return f"{rewritten}(needs_revision: {'; '.join(reasons[:2])})"
         return rewritten
 
     @staticmethod

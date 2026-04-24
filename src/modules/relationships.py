@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from src.core.config import Config
 from src.core.llm_client import LLMClient
 from src.modules.distillation import NovelDistiller
-from src.utils.file_utils import ensure_dir, save_json
+from src.utils.file_utils import ensure_dir, novel_id_from_input, save_json
 from src.utils.text_parser import load_novel_text, split_sentences
 from src.utils.token_counter import TokenCounter
 
@@ -40,6 +40,7 @@ class RelationshipExtractor:
         text = load_novel_text(novel_path)
         chunks = self._chunk_text(text)
         self._last_chunk_count = len(chunks)
+        novel_id = novel_id_from_input(novel_path)
 
         characters = self.distiller._extract_top_characters(text)
         relation_buckets: Dict[str, Dict[str, Any]] = defaultdict(
@@ -57,19 +58,22 @@ class RelationshipExtractor:
             if len(present) < 2:
                 continue
             present = sorted(set(present))
-            chunk_summary = self._extract_chunk_summary(chunk, present)
+            pair_interactions = self._extract_pair_interactions(chunk, present)
 
             for a, b in itertools.combinations(present, 2):
                 key = "_".join(sorted([a, b]))
-                scores = self._score_relation(chunk, a, b)
+                interactions = pair_interactions.get(key, [])
+                if not interactions:
+                    continue
+                evidence_text = "\n".join(interactions)
+                scores = self._score_relation(evidence_text, a, b)
                 bucket = relation_buckets[key]
                 bucket["trust_samples"].append(scores["trust"])
                 bucket["affection_samples"].append(scores["affection"])
                 bucket["power_gap_samples"].append(scores["power_gap"])
                 if scores["conflict_point"]:
                     bucket["conflict_points"].append(scores["conflict_point"])
-                if chunk_summary:
-                    bucket["interactions"].append(chunk_summary)
+                bucket["interactions"].extend(interactions[:2])
 
         final_relations: Dict[str, Dict[str, Any]] = {}
         for key in sorted(relation_buckets.keys()):
@@ -84,7 +88,7 @@ class RelationshipExtractor:
                 ),
             }
 
-        self._save_relations(final_relations, novel_path, output_path)
+        self._save_relations(final_relations, novel_path, output_path, novel_id)
         return final_relations
 
     def _chunk_text(self, text: str) -> List[str]:
@@ -107,13 +111,17 @@ class RelationshipExtractor:
             counter[v] += 1
         return sorted(counter.items(), key=lambda x: x[1], reverse=True)[0][0]
 
-    def _extract_chunk_summary(self, chunk: str, present: List[str]) -> str:
+    def _extract_pair_interactions(self, chunk: str, present: List[str]) -> Dict[str, List[str]]:
         sents = split_sentences(chunk)
+        pairs: Dict[str, List[str]] = defaultdict(list)
         for sent in sents:
-            hit = [name for name in present if name in sent]
-            if len(hit) >= 2:
-                return re.sub(r"\s+", " ", sent).strip()
-        return ""
+            hit = sorted(set(name for name in present if name in sent))
+            if len(hit) < 2:
+                continue
+            cleaned = re.sub(r"\s+", " ", sent).strip()
+            for a, b in itertools.combinations(hit, 2):
+                pairs["_".join([a, b])].append(cleaned)
+        return pairs
 
     @staticmethod
     def _score_relation(chunk: str, a: str, b: str) -> Dict[str, Any]:
@@ -149,11 +157,15 @@ class RelationshipExtractor:
         }
 
     def _save_relations(
-        self, relations: Dict[str, Dict[str, Any]], novel_path: str, output_path: Optional[str]
+        self,
+        relations: Dict[str, Dict[str, Any]],
+        novel_path: str,
+        output_path: Optional[str],
+        novel_id: str,
     ) -> None:
         if not output_path:
-            out_dir = ensure_dir(self.config.get_path("relations"))
-            file = out_dir / (Path(novel_path).stem + "_relations.json")
+            out_dir = ensure_dir(Path(self.config.get_path("relations")) / novel_id)
+            file = out_dir / f"{novel_id}_relations.json"
             save_json(file, relations)
             return
 
@@ -163,4 +175,3 @@ class RelationshipExtractor:
         else:
             out_dir = ensure_dir(out)
             save_json(out_dir / (Path(novel_path).stem + "_relations.json"), relations)
-

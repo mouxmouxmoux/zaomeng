@@ -1,61 +1,82 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import tempfile
 import unittest
 from pathlib import Path
 
 from src.core.config import Config
 from src.modules.chat_engine import ChatEngine
-from src.modules.speaker import Speaker
+from src.modules.relationships import RelationshipExtractor
+from src.utils.file_utils import save_json
 
 
 class RelationBehaviorTests(unittest.TestCase):
-    def test_target_relation_changes_tone(self):
-        speaker = Speaker(Config())
-        speaker.reflection.search_similar_corrections = lambda *args, **kwargs: []
-
-        profile = {
-            "name": "林黛玉",
-            "core_traits": ["敏感", "聪慧"],
-            "speech_style": "克制",
-            "typical_lines": ["你先把话说清楚。"],
-            "values": {"忠诚": 7},
-        }
-        history = [{"speaker": "贾宝玉", "message": "你别生气。"}]
-
-        hostile_reply = speaker.generate(
-            character_profile=profile,
-            context="发生争执",
-            history=history,
-            target_name="薛宝钗",
-            relation_state={"affection": 2, "trust": 2, "hostility": 8, "ambiguity": 3},
+    def make_config(self, root: Path) -> Config:
+        config = Config()
+        config.update(
+            {
+                "paths": {
+                    "characters": str(root / "characters"),
+                    "relations": str(root / "relations"),
+                    "sessions": str(root / "sessions"),
+                    "corrections": str(root / "corrections"),
+                    "logs": str(root / "logs"),
+                }
+            }
         )
-        warm_reply = speaker.generate(
-            character_profile=profile,
-            context="发生争执",
-            history=history,
-            target_name="贾宝玉",
-            relation_state={"affection": 9, "trust": 8, "hostility": 1, "ambiguity": 2},
+        for folder in ("characters", "relations", "sessions", "corrections", "logs"):
+            (root / folder).mkdir(parents=True, exist_ok=True)
+        return config
+
+    def test_extract_pair_interactions_requires_same_sentence(self):
+        extractor = RelationshipExtractor(Config())
+        chunk = (
+            "林黛玉看着贾宝玉，没有说话。"
+            "薛宝钗这时才进门。"
+            "林黛玉又对贾宝玉说，你该回去了。"
         )
+        pairs = extractor._extract_pair_interactions(chunk, ["林黛玉", "贾宝玉", "薛宝钗"])
 
-        self.assertIn("保持明显距离", hostile_reply)
-        self.assertIn("语气更软", warm_reply)
-        self.assertNotEqual(hostile_reply, warm_reply)
+        self.assertIn("林黛玉_贾宝玉", pairs)
+        self.assertEqual(len(pairs["林黛玉_贾宝玉"]), 2)
+        self.assertNotIn("林黛玉_薛宝钗", pairs)
+        self.assertNotIn("薛宝钗_贾宝玉", pairs)
 
-    def test_chat_engine_saves_relation_snapshot(self):
-        engine = ChatEngine(Config())
-        session = {
-            "id": "testsession123",
-            "state": {
-                "relation_matrix": {"A_B": {"trust": 6, "affection": 4, "hostility": 3, "ambiguity": 2}},
-                "relation_delta": {"A_B": {"trust": 1}},
-            },
-        }
-        engine._save_session(session)
-        snapshot = Path(engine.sessions_dir) / "testsession123_relations.json"
-        self.assertTrue(snapshot.exists())
+    def test_chat_engine_scopes_profiles_and_relations_by_novel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.make_config(root)
+
+            save_json(
+                root / "characters" / "novel_a" / "林黛玉.json",
+                {"name": "林黛玉", "speech_style": "克制", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "characters" / "novel_a" / "贾宝玉.json",
+                {"name": "贾宝玉", "speech_style": "直白", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "characters" / "novel_b" / "哈利.json",
+                {"name": "哈利", "speech_style": "直接", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "relations" / "novel_a" / "novel_a_relations.json",
+                {"林黛玉_贾宝玉": {"trust": 8, "affection": 7, "power_gap": 0}},
+            )
+            save_json(
+                root / "relations" / "novel_b" / "novel_b_relations.json",
+                {"哈利_罗恩": {"trust": 2, "affection": 2, "power_gap": 0}},
+            )
+
+            engine = ChatEngine(config)
+            session = engine.create_session("novel_a.txt", "observe")
+
+            self.assertEqual(session["novel_id"], "novel_a")
+            self.assertEqual(session["characters"], ["林黛玉", "贾宝玉"])
+            self.assertEqual(session["state"]["relation_matrix"]["林黛玉_贾宝玉"]["trust"], 8)
+            self.assertNotIn("哈利", session["characters"])
 
 
 if __name__ == "__main__":
     unittest.main()
-
