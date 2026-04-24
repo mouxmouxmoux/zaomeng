@@ -9,7 +9,7 @@ from src.core.config import Config
 from src.modules.chat_engine import ChatEngine
 from src.modules.distillation import NovelDistiller
 from src.modules.relationships import RelationshipExtractor
-from src.utils.file_utils import save_json
+from src.utils.file_utils import load_json, save_json
 
 
 class RelationBehaviorTests(unittest.TestCase):
@@ -122,6 +122,78 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertEqual(len(pairs["\u6797\u9edb\u7389_\u8d3e\u5b9d\u7389"]), 2)
         self.assertNotIn("\u6797\u9edb\u7389_\u859b\u5b9d\u9497", pairs)
         self.assertNotIn("\u859b\u5b9d\u9497_\u8d3e\u5b9d\u7389", pairs)
+
+    def test_act_mode_prefers_explicit_or_strongest_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.make_config(root)
+
+            save_json(
+                root / "characters" / "hongloumeng" / "林黛玉.json",
+                {"name": "林黛玉", "speech_style": "克制", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "characters" / "hongloumeng" / "贾宝玉.json",
+                {"name": "贾宝玉", "speech_style": "直白", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "characters" / "hongloumeng" / "冯紫英.json",
+                {"name": "冯紫英", "speech_style": "直白", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "relations" / "hongloumeng" / "hongloumeng_relations.json",
+                {
+                    "林黛玉_贾宝玉": {"trust": 9, "affection": 9, "power_gap": 0},
+                    "冯紫英_贾宝玉": {"trust": 4, "affection": 3, "power_gap": 0},
+                },
+            )
+
+            engine = ChatEngine(config)
+            session = engine.create_session("hongloumeng.txt", "act")
+
+            responders = engine._active_characters(session, speaker="贾宝玉", context="妹妹今日可大安了？")
+            self.assertEqual(responders, ["林黛玉"])
+
+            explicit = engine._active_characters(session, speaker="贾宝玉", context="林妹妹今日可大安了？")
+            self.assertEqual(explicit, ["林黛玉"])
+
+    def test_save_json_replaces_surrogates(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "session.json"
+            save_json(target, {"message": "x\udce5y"})
+            payload = load_json(target)
+            self.assertEqual(payload["message"], "x?y")
+
+    def test_distiller_rejects_name_plus_dialogue_verb_noise(self):
+        distiller = NovelDistiller(Config())
+        self.assertFalse(distiller._looks_like_name("凤姐笑"))
+        self.assertFalse(distiller._looks_like_name("凤姐听"))
+        self.assertTrue(distiller._looks_like_name("贾宝玉"))
+
+    def test_chat_engine_normalizes_legacy_noisy_profile_and_relation_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.make_config(root)
+
+            save_json(
+                root / "characters" / "hongloumeng" / "凤姐笑.json",
+                {"name": "凤姐笑", "speech_style": "凌厉", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "characters" / "hongloumeng" / "贾宝玉.json",
+                {"name": "贾宝玉", "speech_style": "直白", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "relations" / "hongloumeng" / "hongloumeng_relations.json",
+                {"凤姐听_贾宝玉": {"trust": 6, "affection": 4, "power_gap": 0}},
+            )
+
+            engine = ChatEngine(config)
+            session = engine.create_session("hongloumeng.txt", "act")
+
+            self.assertIn("凤姐", session["characters"])
+            self.assertNotIn("凤姐笑", session["characters"])
+            self.assertEqual(session["state"]["relation_matrix"]["凤姐_贾宝玉"]["trust"], 6)
 
 
 if __name__ == "__main__":

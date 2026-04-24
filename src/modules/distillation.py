@@ -257,7 +257,8 @@ class NovelDistiller:
             return False
         # Avoid common function words.
         bad = {"但是", "于是", "因为", "如果", "然后", "突然", "还是", "已经", "不能", "不会"}
-        return name not in bad
+        bad_suffixes = {"说", "道", "笑", "听", "问", "看", "想", "叹", "喊", "叫", "哭", "忙"}
+        return name not in bad and name[-1] not in bad_suffixes
 
     @staticmethod
     def _empty_bucket() -> Dict[str, List[str]]:

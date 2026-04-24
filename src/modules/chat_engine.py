@@ -12,7 +12,14 @@ from src.core.config import Config
 from src.core.llm_client import LLMClient
 from src.modules.reflection import ReflectionEngine
 from src.modules.speaker import Speaker
-from src.utils.file_utils import ensure_dir, load_json, novel_id_from_input, save_json
+from src.utils.file_utils import (
+    ensure_dir,
+    load_json,
+    normalize_character_name,
+    normalize_relation_key,
+    novel_id_from_input,
+    save_json,
+)
 
 
 class ChatEngine:
@@ -75,7 +82,7 @@ class ChatEngine:
 
             session["history"].append({"speaker": "Narrator", "message": user_msg, "ts": int(time.time())})
             profiles = self._load_character_profiles(session.get("novel_id"))
-            for name in self._active_characters(session):
+            for name in self._active_characters(session, speaker="Narrator", context=user_msg):
                 profile = profiles.get(name, {"name": name})
                 target_name = self._infer_target(name, session["history"], session["characters"])
                 relation_state = self._get_relation_state(session, name, target_name)
@@ -109,11 +116,14 @@ class ChatEngine:
                     break
                 continue
 
+            responders = self._active_characters(session, speaker=character, context=user_msg)
+            if not responders:
+                print("未识别明确对话对象。请在下一句里点名角色，或先补充关系数据。")
+                continue
+
             session["history"].append({"speaker": character, "message": user_msg, "ts": int(time.time())})
             profiles = self._load_character_profiles(session.get("novel_id"))
-            for name in self._active_characters(session):
-                if name == character:
-                    continue
+            for name in responders:
                 profile = profiles.get(name, {"name": name})
                 target_name = self._infer_target(name, session["history"], session["characters"])
                 relation_state = self._get_relation_state(session, name, target_name)
@@ -283,7 +293,9 @@ class ChatEngine:
                         continue
                     item_novel_id = item.get("novel_id")
                     if item_novel_id == novel_id or item_novel_id is None:
-                        profiles[item["name"]] = item
+                        canonical_name = normalize_character_name(item["name"])
+                        item["name"] = canonical_name
+                        profiles[canonical_name] = item
                 return profiles
         else:
             files = sorted(self.characters_dir.glob("*.json"))
@@ -292,7 +304,9 @@ class ChatEngine:
         for file in files:
             item = load_json(file, default=None)
             if item and isinstance(item, dict) and item.get("name"):
-                profiles[item["name"]] = item
+                canonical_name = normalize_character_name(item["name"])
+                item["name"] = canonical_name
+                profiles[canonical_name] = item
         return profiles
 
     @staticmethod
@@ -334,7 +348,11 @@ class ChatEngine:
         if not rel_file:
             return {}
         rel = load_json(rel_file, default={})
-        return rel.get(self._pair_key(speaker, target), {})
+        normalized = {
+            normalize_relation_key(key): value
+            for key, value in rel.items()
+        }
+        return normalized.get(self._pair_key(normalize_character_name(speaker), normalize_character_name(target)), {})
 
     def _get_relation_state(self, session: Dict[str, Any], speaker: str, target: str) -> Dict[str, Any]:
         if not target:
@@ -342,14 +360,113 @@ class ChatEngine:
         matrix = session["state"].setdefault("relation_matrix", {})
         return matrix.get(self._pair_key(speaker, target), {})
 
-    def _active_characters(self, session: Dict[str, Any]) -> List[str]:
+    def _active_characters(
+        self,
+        session: Dict[str, Any],
+        speaker: Optional[str] = None,
+        context: str = "",
+    ) -> List[str]:
         limit = int(self.config.get("chat_engine.max_speakers_per_turn", 4))
-        return session["characters"][: max(1, limit)]
+        candidates = [name for name in session["characters"] if name != speaker]
+        if not candidates:
+            return []
+
+        mentioned = self._mentioned_characters(context, candidates)
+        if mentioned:
+            if session.get("mode") == "act":
+                return mentioned[: max(1, min(limit, len(mentioned)))]
+            ranked = self._rank_characters(session, speaker, candidates, preferred=mentioned)
+            ordered = []
+            seen = set()
+            for name in mentioned + ranked:
+                if name in seen:
+                    continue
+                ordered.append(name)
+                seen.add(name)
+                if len(ordered) >= max(1, limit):
+                    break
+            return ordered
+
+        ranked = self._rank_characters(session, speaker, candidates)
+        if session.get("mode") == "act":
+            if not ranked:
+                return []
+            top = ranked[0]
+            if self._relation_score(session, speaker, top) <= self._default_relation_score():
+                return []
+            return [top]
+        return ranked[: max(1, limit)]
 
     def _trim_history(self, session: Dict[str, Any]) -> None:
         turns = int(self.config.get("chat_engine.max_history_turns", 10))
         keep = max(10, turns * (len(self._active_characters(session)) + 1))
         session["history"] = session["history"][-keep:]
+
+    @staticmethod
+    def _candidate_aliases(name: str) -> List[str]:
+        if len(name) < 3:
+            return []
+        alias = name[-2:]
+        if len(alias) < 2 or alias == name:
+            return []
+        return [alias]
+
+    def _mentioned_characters(self, context: str, candidates: List[str]) -> List[str]:
+        if not context:
+            return []
+
+        alias_owners: Dict[str, List[str]] = {}
+        for name in candidates:
+            for alias in self._candidate_aliases(name):
+                alias_owners.setdefault(alias, []).append(name)
+
+        hits: List[tuple[int, str]] = []
+        for name in candidates:
+            positions = []
+            if name in context:
+                positions.append(context.index(name))
+            for alias in self._candidate_aliases(name):
+                if alias_owners.get(alias) != [name]:
+                    continue
+                if alias in context:
+                    positions.append(context.index(alias))
+            if positions:
+                hits.append((min(positions), name))
+
+        hits.sort(key=lambda item: (item[0], item[1]))
+        return [name for _, name in hits]
+
+    @staticmethod
+    def _default_relation_score() -> int:
+        return 7
+
+    def _relation_score(self, session: Dict[str, Any], speaker: Optional[str], candidate: str) -> int:
+        if not speaker or speaker in self.SYSTEM_SPEAKERS:
+            return 0
+        state = self._get_relation_state(session, speaker, candidate)
+        trust = int(state.get("trust", 5))
+        affection = int(state.get("affection", 5))
+        hostility = int(state.get("hostility", max(0, 5 - affection)))
+        ambiguity = int(state.get("ambiguity", 3))
+        return trust + affection - hostility - ambiguity
+
+    def _rank_characters(
+        self,
+        session: Dict[str, Any],
+        speaker: Optional[str],
+        candidates: List[str],
+        preferred: Optional[List[str]] = None,
+    ) -> List[str]:
+        preferred_set = set(preferred or [])
+        return sorted(
+            candidates,
+            key=lambda name: (
+                1 if name in preferred_set else 0,
+                self._relation_score(session, speaker, name),
+                name,
+            ),
+            reverse=True,
+        )
 
     @staticmethod
     def _infer_target(speaker: str, history: List[Dict[str, Any]], all_chars: List[str]) -> str:
