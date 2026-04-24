@@ -26,6 +26,7 @@ class ChatEngine:
     """Multi-character chat with novel-scoped assets."""
 
     SYSTEM_SPEAKERS = {"Narrator", "User", "旁白", "用户"}
+    ADDRESS_SUFFIXES = ("哥哥", "姐姐", "妹妹", "弟弟", "姑娘", "公子", "爷")
 
     def __init__(self, config: Optional[Config] = None):
         self.config = config or Config()
@@ -54,6 +55,7 @@ class ChatEngine:
             "history": [],
             "state": {
                 "emotion": {},
+                "focus_targets": {},
                 "relation_delta": {},
                 "relation_matrix": self._build_relation_matrix(characters, novel_id),
             },
@@ -67,6 +69,8 @@ class ChatEngine:
         if not data:
             raise FileNotFoundError(f"Session not found: {session_id}")
         data.setdefault("novel_id", novel_id_from_input(data.get("novel", session_id)))
+        data.setdefault("state", {})
+        data["state"].setdefault("focus_targets", {})
         return data
 
     def observe_mode(self, session: Dict[str, Any]) -> None:
@@ -141,6 +145,7 @@ class ChatEngine:
             raise ValueError("消息不能为空。")
 
         session["history"].append({"speaker": speaker, "message": message, "ts": int(time.time())})
+        self._remember_focus_targets(session, speaker, responders)
         profiles = self._load_character_profiles(session.get("novel_id"))
 
         responses: List[tuple[str, str]] = []
@@ -166,6 +171,15 @@ class ChatEngine:
         self._update_state(session)
         self._save_session(session)
         return responses
+
+    def _remember_focus_targets(self, session: Dict[str, Any], speaker: str, responders: List[str]) -> None:
+        if speaker in self.SYSTEM_SPEAKERS or not responders:
+            return
+        focus_targets = session.setdefault("state", {}).setdefault("focus_targets", {})
+        if len(responders) == 1:
+            focus_targets[speaker] = responders[0]
+        elif speaker in focus_targets:
+            focus_targets.pop(speaker, None)
 
     @staticmethod
     def _print_responses(responses: List[tuple[str, str]]) -> None:
@@ -403,6 +417,10 @@ class ChatEngine:
                     break
             return ordered
 
+        remembered = self._remembered_target(session, speaker, candidates)
+        if remembered:
+            return [remembered]
+
         ranked = self._rank_characters(session, speaker, candidates)
         if session.get("mode") == "act":
             if not ranked:
@@ -413,6 +431,20 @@ class ChatEngine:
             return [top]
         return ranked[: max(1, limit)]
 
+    def _remembered_target(
+        self,
+        session: Dict[str, Any],
+        speaker: Optional[str],
+        candidates: List[str],
+    ) -> str:
+        if not speaker or speaker in self.SYSTEM_SPEAKERS:
+            return ""
+        focus_targets = session.get("state", {}).get("focus_targets", {})
+        target = focus_targets.get(speaker, "")
+        if target in candidates:
+            return target
+        return ""
+
     def _trim_history(self, session: Dict[str, Any]) -> None:
         turns = int(self.config.get("chat_engine.max_history_turns", 10))
         keep = max(10, turns * (len(self._active_characters(session)) + 1))
@@ -420,12 +452,25 @@ class ChatEngine:
 
     @staticmethod
     def _candidate_aliases(name: str) -> List[str]:
-        if len(name) < 3:
-            return []
-        alias = name[-2:]
-        if len(alias) < 2 or alias == name:
-            return []
-        return [alias]
+        aliases: List[str] = []
+        clean = normalize_character_name(name)
+        if len(clean) >= 3:
+            given = clean[-2:]
+            if len(given) == 2 and given != clean:
+                aliases.append(given)
+                for suffix in ChatEngine.ADDRESS_SUFFIXES:
+                    aliases.append(f"{given[0]}{suffix}")
+                    aliases.append(f"{clean[0]}{suffix}")
+        elif len(clean) == 2:
+            for suffix in ChatEngine.ADDRESS_SUFFIXES:
+                aliases.append(f"{clean[0]}{suffix}")
+        ordered = []
+        seen = set()
+        for alias in aliases:
+            if alias and alias != clean and alias not in seen:
+                ordered.append(alias)
+                seen.add(alias)
+        return ordered
 
     def _mentioned_characters(self, context: str, candidates: List[str]) -> List[str]:
         if not context:

@@ -19,6 +19,8 @@ from src.utils.token_counter import TokenCounter
 class NovelDistiller:
     """Novel character distillation with chunked processing."""
 
+    ADDRESS_SUFFIXES = ("哥哥", "姐姐", "妹妹", "弟弟", "姑娘", "公子", "爷")
+
     STOP_NAMES = {
         "我们",
         "你们",
@@ -224,12 +226,26 @@ class NovelDistiller:
 
     @staticmethod
     def _candidate_aliases(name: str) -> List[str]:
-        if len(name) < 3:
-            return []
-        alias = name[-2:]
-        if len(alias) < 2 or alias == name:
-            return []
-        return [alias]
+        aliases: List[str] = []
+        clean = str(name or "").strip()
+        if len(clean) >= 3:
+            given = clean[-2:]
+            if len(given) == 2 and given != clean:
+                aliases.append(given)
+                for suffix in NovelDistiller.ADDRESS_SUFFIXES:
+                    aliases.append(f"{given[0]}{suffix}")
+                    aliases.append(f"{clean[0]}{suffix}")
+        elif len(clean) == 2:
+            for suffix in NovelDistiller.ADDRESS_SUFFIXES:
+                aliases.append(f"{clean[0]}{suffix}")
+
+        ordered = []
+        seen = set()
+        for alias in aliases:
+            if alias and alias != clean and alias not in seen:
+                ordered.append(alias)
+                seen.add(alias)
+        return ordered
 
     def _alias_is_reliable(self, text: str, alias: str, allow_sparse_alias: bool = False) -> bool:
         if len(alias) < 2 or alias in self.STOP_NAMES:

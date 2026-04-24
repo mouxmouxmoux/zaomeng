@@ -11,6 +11,7 @@ from src.core.main import ZaomengCLI
 from src.modules.chat_engine import ChatEngine
 from src.modules.distillation import NovelDistiller
 from src.modules.relationships import RelationshipExtractor
+from src.modules.speaker import Speaker
 from src.utils.file_utils import load_json, save_json
 
 
@@ -285,6 +286,91 @@ class RelationBehaviorTests(unittest.TestCase):
             replies = engine.act_once(session, "\u8d3e\u5b9d\u7389", "\u59b9\u59b9\u4eca\u65e5\u53ef\u5927\u5b89\u4e86\uff1f")
 
             self.assertEqual(replies, [("\u6797\u9edb\u7389", "\u4e0d\u52b3\u6302\u5ff5\uff0c\u6211\u4eca\u65e5\u8fd8\u597d\u3002")])
+
+    def test_act_mode_supports_honorific_alias_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.make_config(root)
+
+            save_json(
+                root / "characters" / "hongloumeng" / "\u6797\u9edb\u7389.json",
+                {"name": "\u6797\u9edb\u7389", "speech_style": "\u514b\u5236", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "characters" / "hongloumeng" / "\u8d3e\u5b9d\u7389.json",
+                {"name": "\u8d3e\u5b9d\u7389", "speech_style": "\u76f4\u767d", "typical_lines": [], "values": {}},
+            )
+
+            engine = ChatEngine(config)
+            session = engine.create_session("hongloumeng.txt", "act")
+
+            responders = engine._active_characters(
+                session,
+                speaker="\u6797\u9edb\u7389",
+                context="\u5b9d\u54e5\u54e5\uff0c\u4eca\u5929\u600e\u4e48\u6765\u8fd9\u4e48\u665a\uff1f",
+            )
+
+            self.assertEqual(responders, ["\u8d3e\u5b9d\u7389"])
+
+    def test_act_mode_remembers_last_explicit_target(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = self.make_config(root)
+
+            save_json(
+                root / "characters" / "hongloumeng" / "\u6797\u9edb\u7389.json",
+                {"name": "\u6797\u9edb\u7389", "speech_style": "\u514b\u5236", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "characters" / "hongloumeng" / "\u8d3e\u5b9d\u7389.json",
+                {"name": "\u8d3e\u5b9d\u7389", "speech_style": "\u76f4\u767d", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "characters" / "hongloumeng" / "\u859b\u5b9d\u9497.json",
+                {"name": "\u859b\u5b9d\u9497", "speech_style": "\u5e73\u7a33", "typical_lines": [], "values": {}},
+            )
+            save_json(
+                root / "relations" / "hongloumeng" / "hongloumeng_relations.json",
+                {
+                    "\u6797\u9edb\u7389_\u8d3e\u5b9d\u7389": {"trust": 9, "affection": 9, "power_gap": 0},
+                    "\u859b\u5b9d\u9497_\u8d3e\u5b9d\u7389": {"trust": 8, "affection": 8, "power_gap": 0},
+                },
+            )
+
+            engine = ChatEngine(config)
+            engine.speaker.generate = Mock(return_value="\u56de\u5e94")
+            session = engine.create_session("hongloumeng.txt", "act")
+
+            first = engine.act_once(session, "\u8d3e\u5b9d\u7389", "\u6797\u59b9\u59b9\uff0c\u4eca\u65e5\u53ef\u5927\u5b89\u4e86\uff1f")
+            second = engine.act_once(session, "\u8d3e\u5b9d\u7389", "\u6211\u53ea\u662f\u60f3\u518d\u95ee\u4f60\u4e00\u53e5\u3002")
+
+            self.assertEqual(first, [("\u6797\u9edb\u7389", "\u56de\u5e94")])
+            self.assertEqual(second, [("\u6797\u9edb\u7389", "\u56de\u5e94")])
+            self.assertEqual(session["state"]["focus_targets"]["\u8d3e\u5b9d\u7389"], "\u6797\u9edb\u7389")
+
+    def test_speaker_avoids_dumping_typical_line_as_reply(self):
+        speaker = Speaker(Config())
+        profile = {
+            "name": "\u8d3e\u5b9d\u7389",
+            "core_traits": ["\u654f\u611f"],
+            "speech_style": "\u76f4\u767d",
+            "typical_lines": [
+                "\u58eb\u9690\u63a5\u4e86\u770b\u65f6\uff0c\u539f\u6765\u662f\u5757\u9c9c\u660e\u7f8e\u7389\uff0c\u4e0a\u9762\u5b57\u8ff9\u5206\u660e\uff0c\u954c\u7740\u201c\u901a\u7075\u5b9d\u7389\u201d\u56db\u5b57\u3002"
+            ],
+            "values": {},
+        }
+
+        reply = speaker.generate(
+            character_profile=profile,
+            context="\u9edb\u7389\u5728\u95ee\u4f60\u4eca\u65e5\u4e3a\u4f55\u6765\u665a\u4e86\u3002",
+            history=[],
+            target_name="\u6797\u9edb\u7389",
+            relation_state={"affection": 8, "trust": 8, "hostility": 0, "ambiguity": 2},
+        )
+
+        self.assertNotIn("\u58eb\u9690\u63a5\u4e86\u770b\u65f6", reply)
+        self.assertNotIn("\u901a\u7075\u5b9d\u7389", reply)
+        self.assertIn("\u6797\u9edb\u7389", reply)
 
     def test_cli_chat_message_uses_single_turn_path(self):
         argv = [

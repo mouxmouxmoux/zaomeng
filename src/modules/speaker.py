@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import random
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
@@ -36,65 +35,84 @@ class Speaker:
             target=target_name or None,
             top_k=2,
         )
-        correction_hint = "\n".join(
-            f"避免: {x.get('original_message')} -> 倾向: {x.get('corrected_message')}" for x in similar
-        )
 
         affection = int(relation_state.get("affection", 5))
         trust = int(relation_state.get("trust", 5))
         hostility = int(relation_state.get("hostility", max(0, 5 - affection)))
         ambiguity = int(relation_state.get("ambiguity", 3))
 
-        # Fully local deterministic generation with target-specific tone.
-        choices = character_profile.get("typical_lines", [])[:5]
-        suffix = self._relation_suffix(
-            speech_style=character_profile.get("speech_style", ""),
+        traits = [str(item).strip() for item in character_profile.get("core_traits", []) if str(item).strip()]
+        speech_style = str(character_profile.get("speech_style", ""))
+        has_correction = bool(similar)
+
+        opening = self._opening_line(
             target_name=target_name,
             affection=affection,
             trust=trust,
             hostility=hostility,
             ambiguity=ambiguity,
-            has_correction=bool(correction_hint),
+            speech_style=speech_style,
+            has_correction=has_correction,
         )
-        if choices:
-            base = random.choice(choices)
-            return f"{base}（{suffix}）"
-
-        traits = "、".join(character_profile.get("core_traits", [])[:2]) or "克制"
-        if relation_hint:
-            return f"{name}（{traits}）对{target_name or '对方'}回应：{self._relation_sentence(affection, hostility, trust, ambiguity)}"
-        return f"{name}（{traits}）回应：{self._relation_sentence(affection, hostility, trust, ambiguity)}"
+        closing = self._closing_line(
+            traits=traits,
+            relation_hint=relation_hint,
+            affection=affection,
+            trust=trust,
+            hostility=hostility,
+            ambiguity=ambiguity,
+        )
+        return f"{opening}{closing}"
 
     @staticmethod
-    def _relation_suffix(
-        speech_style: str,
+    def _opening_line(
         target_name: str,
         affection: int,
         trust: int,
         hostility: int,
         ambiguity: int,
+        speech_style: str,
         has_correction: bool,
     ) -> str:
-        if has_correction:
-            return f"对{target_name or '对方'}时，我会按纠错原则收束表达。"
+        address = f"{target_name}，" if target_name else ""
         if hostility >= 7:
-            return f"对{target_name or '对方'}保持明显距离和锋芒。"
+            return f"{address}这话我听见了，只是不想再逼近一步。"
         if affection >= 8 and trust >= 7:
-            return f"对{target_name or '对方'}语气更软，会照顾对方情绪。"
+            return f"{address}你既这样问，我自然要认真回你。"
         if ambiguity >= 7:
-            return f"对{target_name or '对方'}带试探，不把话说满。"
+            return f"{address}这话我先留一线，不肯一下说死。"
+        if has_correction:
+            return f"{address}你的意思我明白，我还是按一向的心性慢慢说。"
         if "克制" in speech_style:
-            return f"对{target_name or '对方'}先收住情绪，再表达立场。"
-        return "这是我此刻的态度。"
+            return f"{address}你先别急，我把话缓一缓再说。"
+        if "直白" in speech_style:
+            return f"{address}你既问起，我便直说。"
+        return f"{address}你既开了口，我就照实回你。"
 
     @staticmethod
-    def _relation_sentence(affection: int, hostility: int, trust: int, ambiguity: int) -> str:
+    def _closing_line(
+        traits: List[str],
+        relation_hint: str,
+        affection: int,
+        trust: int,
+        hostility: int,
+        ambiguity: int,
+    ) -> str:
+        primary_trait = traits[0] if traits else ""
         if hostility >= 7:
-            return "话我会说，但不会给你太多余地。"
+            return "今日先说到这里，余下的不必多提。"
         if affection >= 8 and trust >= 7:
-            return "我先顾着你的感受，再把事情说开。"
+            if primary_trait in {"敏感", "温柔", "善良"}:
+                return "你若安稳些，我心里也就安稳些。"
+            return "你既挂念，我心里自然记着。"
         if ambiguity >= 7:
-            return "我先试探你的意思，再决定把话说到哪一步。"
+            return "待我再想一想，改日再把余下的话补全。"
         if trust <= 3:
-            return "我会先留几分，不会轻易把底牌交出去。"
-        return "先把话说清，再看彼此立场。"
+            return "这事我还要再看，不便立刻说透。"
+        if primary_trait in {"敏感", "克制"}:
+            return "我不愿把情绪说得太满，但意思你该明白。"
+        if primary_trait in {"聪慧", "谨慎"}:
+            return "眼下先看一步，再定后话。"
+        if relation_hint:
+            return "我心里有分寸，不会把话说偏。"
+        return "事情总要一层层说明白。"
