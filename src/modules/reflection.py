@@ -6,7 +6,6 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
@@ -59,11 +58,13 @@ class ReflectionEngine:
         character: str,
         original_message: str,
         corrected_message: str,
+        target: Optional[str] = None,
         reason: str = "",
     ) -> Dict[str, Any]:
         payload = {
             "session_id": session_id,
             "character": character,
+            "target": target or "",
             "original_message": original_message,
             "corrected_message": corrected_message,
             "reason": reason,
@@ -74,7 +75,11 @@ class ReflectionEngine:
         return payload
 
     def search_similar_corrections(
-        self, text: str, character: Optional[str] = None, top_k: int = 3
+        self,
+        text: str,
+        character: Optional[str] = None,
+        target: Optional[str] = None,
+        top_k: int = 3,
     ) -> List[Dict[str, Any]]:
         results: List[Dict[str, Any]] = []
         for file in self.corrections_dir.glob("correction_*.json"):
@@ -82,6 +87,8 @@ class ReflectionEngine:
             if not item:
                 continue
             if character and item.get("character") != character:
+                continue
+            if target is not None and item.get("target", "") not in ("", target):
                 continue
             source = item.get("original_message", "")
             ratio = SequenceMatcher(None, text, source).ratio()
@@ -93,3 +100,24 @@ class ReflectionEngine:
         results.sort(key=lambda x: x.get("similarity", 0), reverse=True)
         return results[:top_k]
 
+    def relation_alignment_issues(self, message: str, relation_state: Dict[str, Any]) -> List[str]:
+        """Check whether a message tone conflicts with target-specific relation state."""
+        issues: List[str] = []
+        affection = int(relation_state.get("affection", 5))
+        trust = int(relation_state.get("trust", 5))
+        hostility = int(relation_state.get("hostility", max(0, 5 - affection)))
+        ambiguity = int(relation_state.get("ambiguity", 3))
+
+        warm_markers = ("关心", "抱歉", "理解你", "别难过", "我在", "我们")
+        harsh_markers = ("滚", "蠢", "闭嘴", "讨厌", "厌恶", "烦死")
+
+        if hostility >= 7 and any(w in message for w in warm_markers):
+            issues.append("高敌意关系下出现过度亲近措辞")
+        if affection >= 7 and any(h in message for h in harsh_markers):
+            issues.append("高好感关系下出现强攻击措辞")
+        if trust <= 2 and "完全相信" in message:
+            issues.append("低信任关系下出现不合理绝对信任")
+        if ambiguity >= 7 and ("永远" in message or "绝不" in message):
+            issues.append("高暧昧/不确定关系下出现过度绝对表态")
+
+        return issues

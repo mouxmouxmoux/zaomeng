@@ -74,6 +74,10 @@ class DreamForgeCLI:
                                   help="纠正后的句子")
         correct_parser.add_argument("--character", "-r",
                                   help="角色名")
+        correct_parser.add_argument("--target", "-t",
+                                  help="对象角色名")
+        correct_parser.add_argument("--reason",
+                                  help="纠错原因")
         
         # extract 命令：提取关系
         extract_parser = subparsers.add_parser("extract", help="从小说中提取角色关系")
@@ -208,8 +212,10 @@ class DreamForgeCLI:
         correction = {
             "session_id": args.session,
             "character": args.character or "unknown",
+            "target": args.target or "",
             "original_message": args.message,
             "corrected_message": args.corrected,
+            "reason": args.reason or "",
             "timestamp": time.time()
         }
         

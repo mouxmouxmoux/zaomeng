@@ -31,15 +31,20 @@ class ChatEngine:
         profiles = self._load_character_profiles()
         if not profiles:
             raise RuntimeError("未找到角色档案，请先运行 distill。")
+        characters = list(profiles.keys())
         session = {
             "id": uuid.uuid4().hex[:12],
             "title": f"{novel}_{mode}_{int(time.time())}",
             "novel": novel,
             "mode": mode,
             "created_at": int(time.time()),
-            "characters": list(profiles.keys()),
+            "characters": characters,
             "history": [],
-            "state": {"emotion": {}, "relation_delta": {}},
+            "state": {
+                "emotion": {},
+                "relation_delta": {},
+                "relation_matrix": self._build_relation_matrix(characters),
+            },
         }
         self._save_session(session)
         return session
@@ -66,17 +71,21 @@ class ChatEngine:
             profiles = self._load_character_profiles()
             for name in session["characters"][:4]:
                 profile = profiles.get(name, {"name": name})
+                target_name = self._infer_target(name, session["history"], session["characters"])
+                relation_state = self._get_relation_state(session, name, target_name)
                 reply = self.speaker.generate(
                     character_profile=profile,
                     context=user_msg,
                     history=session["history"],
+                    target_name=target_name,
+                    relation_state=relation_state,
                     relation_hint=self._relation_hint(name, session["characters"]),
                 )
-                checked = self.reflection.detect_ooc(profile, reply)
-                if checked.is_ooc and checked.reasons:
-                    reply = f"{reply}（自检修正）"
+                reply = self._guard_reply(profile, reply, relation_state, target_name)
                 print(f"{name}: {reply}")
-                session["history"].append({"speaker": name, "message": reply, "ts": int(time.time())})
+                session["history"].append(
+                    {"speaker": name, "target": target_name, "message": reply, "ts": int(time.time())}
+                )
 
             self._update_state(session)
             self._save_session(session)
@@ -99,17 +108,21 @@ class ChatEngine:
                 if name == character:
                     continue
                 profile = profiles.get(name, {"name": name})
+                target_name = self._infer_target(name, session["history"], session["characters"])
+                relation_state = self._get_relation_state(session, name, target_name)
                 reply = self.speaker.generate(
                     character_profile=profile,
                     context=user_msg,
                     history=session["history"],
+                    target_name=target_name,
+                    relation_state=relation_state,
                     relation_hint=self._relation_hint(name, session["characters"]),
                 )
-                checked = self.reflection.detect_ooc(profile, reply)
-                if checked.is_ooc and checked.reasons:
-                    reply = f"{reply}（根据人设收束）"
+                reply = self._guard_reply(profile, reply, relation_state, target_name)
                 print(f"{name}: {reply}")
-                session["history"].append({"speaker": name, "message": reply, "ts": int(time.time())})
+                session["history"].append(
+                    {"speaker": name, "target": target_name, "message": reply, "ts": int(time.time())}
+                )
 
             self._update_state(session)
             self._save_session(session)
@@ -128,20 +141,27 @@ class ChatEngine:
             self._reflect_last_turn(session)
             return True
         if command.startswith("/correct"):
-            # /correct 角色|原句|修正句
+            # /correct 角色|对象|原句|修正句|原因
             payload = command[len("/correct") :].strip()
             parts = [p.strip() for p in payload.split("|")]
-            if len(parts) != 3:
-                print("格式错误。用法: /correct 角色|原句|修正句")
+            if len(parts) not in (3, 4, 5):
+                print("格式错误。用法: /correct 角色|对象|原句|修正句|原因")
                 return True
+            if len(parts) == 3:
+                character, target, original, corrected, reason = parts[0], "", parts[1], parts[2], "inline_command"
+            elif len(parts) == 4:
+                character, target, original, corrected, reason = parts[0], parts[1], parts[2], parts[3], "inline_command"
+            else:
+                character, target, original, corrected, reason = parts[0], parts[1], parts[2], parts[3], parts[4]
             item = self.reflection.save_correction(
                 session_id=session["id"],
-                character=parts[0],
-                original_message=parts[1],
-                corrected_message=parts[2],
-                reason="inline_command",
+                character=character,
+                target=target or None,
+                original_message=original,
+                corrected_message=corrected,
+                reason=reason,
             )
-            print(f"纠错已记录: {item['character']}")
+            print(f"纠错已记录: {item['character']} -> {item.get('target') or '任意对象'}")
             return True
         return False
 
@@ -164,18 +184,15 @@ class ChatEngine:
             print(f"- {reason}")
 
     def _relation_hint(self, speaker: str, all_chars: List[str]) -> str:
-        rel_file = self._latest_relations_file()
-        if not rel_file:
-            return ""
-        rel = load_json(rel_file, default={})
         hints = []
         for other in all_chars:
             if other == speaker:
                 continue
-            key = "_".join(sorted([speaker, other]))
-            if key in rel:
-                item = rel[key]
-                hints.append(f"{other}(trust={item.get('trust',5)},aff={item.get('affection',5)})")
+            item = self._get_relation_state_from_disk(speaker, other)
+            if item:
+                hints.append(
+                    f"{other}(trust={item.get('trust',5)},aff={item.get('affection',5)},host={item.get('hostility', max(0, 5-item.get('affection',5)))})"
+                )
         return "; ".join(hints[:3])
 
     def _latest_relations_file(self) -> Optional[Path]:
@@ -185,6 +202,7 @@ class ChatEngine:
     def _update_state(self, session: Dict[str, Any]) -> None:
         latest = session["history"][-6:]
         emotion = session["state"]["emotion"]
+        relation_matrix = session["state"].setdefault("relation_matrix", {})
         for item in latest:
             speaker = item["speaker"]
             if speaker in ("旁白", "用户"):
@@ -196,6 +214,29 @@ class ChatEngine:
             if any(k in msg for k in ("冷静", "平静", "慢慢说", "理解")):
                 delta -= 1
             emotion[speaker] = max(-5, min(5, emotion.get(speaker, 0) + delta))
+            target = item.get("target") or self._infer_target(speaker, latest, session["characters"])
+            if target and target != speaker:
+                key = self._pair_key(speaker, target)
+                state = relation_matrix.setdefault(
+                    key,
+                    {"trust": 5, "affection": 5, "hostility": 0, "ambiguity": 3},
+                )
+                if any(k in msg for k in ("谢谢", "抱歉", "理解", "关心", "在意")):
+                    state["affection"] = min(10, state.get("affection", 5) + 1)
+                    state["trust"] = min(10, state.get("trust", 5) + 1)
+                    state["hostility"] = max(0, state.get("hostility", 0) - 1)
+                if any(k in msg for k in ("滚", "讨厌", "厌恶", "闭嘴", "烦")):
+                    state["hostility"] = min(10, state.get("hostility", 0) + 2)
+                    state["affection"] = max(0, state.get("affection", 5) - 2)
+                    state["trust"] = max(0, state.get("trust", 5) - 1)
+                if any(k in msg for k in ("也许", "或许", "未必", "以后再说")):
+                    state["ambiguity"] = min(10, state.get("ambiguity", 3) + 1)
+                session["state"]["relation_delta"][key] = {
+                    "trust": state["trust"],
+                    "affection": state["affection"],
+                    "hostility": state["hostility"],
+                    "ambiguity": state["ambiguity"],
+                }
 
     def _print_turn_cost(self) -> None:
         summary = self.llm.get_cost_summary()
@@ -217,3 +258,78 @@ class ChatEngine:
                 profiles[item["name"]] = item
         return profiles
 
+    @staticmethod
+    def _pair_key(a: str, b: str) -> str:
+        return "_".join(sorted([a, b]))
+
+    def _build_relation_matrix(self, characters: List[str]) -> Dict[str, Dict[str, Any]]:
+        matrix: Dict[str, Dict[str, Any]] = {}
+        for speaker in characters:
+            for target in characters:
+                if speaker == target:
+                    continue
+                disk = self._get_relation_state_from_disk(speaker, target) or {}
+                matrix[self._pair_key(speaker, target)] = {
+                    "trust": int(disk.get("trust", 5)),
+                    "affection": int(disk.get("affection", 5)),
+                    "hostility": int(disk.get("hostility", max(0, 5 - int(disk.get("affection", 5))))),
+                    "ambiguity": int(disk.get("ambiguity", 3)),
+                }
+        return matrix
+
+    def _get_relation_state_from_disk(self, speaker: str, target: str) -> Dict[str, Any]:
+        rel_file = self._latest_relations_file()
+        if not rel_file:
+            return {}
+        rel = load_json(rel_file, default={})
+        return rel.get(self._pair_key(speaker, target), {})
+
+    def _get_relation_state(self, session: Dict[str, Any], speaker: str, target: str) -> Dict[str, Any]:
+        if not target:
+            return {}
+        matrix = session["state"].setdefault("relation_matrix", {})
+        return matrix.get(self._pair_key(speaker, target), {})
+
+    @staticmethod
+    def _infer_target(speaker: str, history: List[Dict[str, Any]], all_chars: List[str]) -> str:
+        for item in reversed(history):
+            prev_speaker = item.get("speaker", "")
+            if prev_speaker and prev_speaker != speaker and prev_speaker in all_chars:
+                return prev_speaker
+        for candidate in all_chars:
+            if candidate != speaker:
+                return candidate
+        return ""
+
+    def _guard_reply(
+        self,
+        profile: Dict[str, Any],
+        reply: str,
+        relation_state: Dict[str, Any],
+        target_name: str,
+    ) -> str:
+        issues = self.reflection.relation_alignment_issues(reply, relation_state)
+        checked = self.reflection.detect_ooc(profile, reply)
+        if not issues and not checked.is_ooc:
+            return reply
+
+        rewritten = self._rewrite_reply(reply, relation_state, target_name)
+        issues_after = self.reflection.relation_alignment_issues(rewritten, relation_state)
+        checked_after = self.reflection.detect_ooc(profile, rewritten)
+        if issues_after or checked_after.is_ooc:
+            reasons = issues_after + checked_after.reasons
+            return f"{rewritten}（needs_revision: {'; '.join(reasons[:2])}）"
+        return rewritten
+
+    @staticmethod
+    def _rewrite_reply(reply: str, relation_state: Dict[str, Any], target_name: str) -> str:
+        hostility = int(relation_state.get("hostility", 0))
+        affection = int(relation_state.get("affection", 5))
+        ambiguity = int(relation_state.get("ambiguity", 3))
+        if hostility >= 7:
+            return f"对{target_name or '对方'}，我把话说到这里，不必更近一步。"
+        if affection >= 8:
+            return f"对{target_name or '对方'}，我会把语气放缓，把话说明白。"
+        if ambiguity >= 7:
+            return f"对{target_name or '对方'}，我先留一点余地，不把话说死。"
+        return f"{reply}（已按对象关系收束）"
