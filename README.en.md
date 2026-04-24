@@ -24,7 +24,7 @@ Copy-Item config.yaml.example config.yaml
 Repository:
 
 ```text
-https://github.com/wkbin/Dreamforge.git
+https://github.com/wkbin/zaomeng.git
 ```
 
 ### OpenClaw
@@ -39,15 +39,15 @@ Manual install, choose one:
 
 ```bash
 # Option 1: clone the repo and copy the adapter
-git clone https://github.com/wkbin/Dreamforge.git
+git clone https://github.com/wkbin/zaomeng.git
 mkdir -p <openclaw-skills-root>/zaomeng-skill
-cp Dreamforge/openclaw-skill/SKILL.md <openclaw-skills-root>/zaomeng-skill/SKILL.md
+cp zaomeng/openclaw-skill/SKILL.md <openclaw-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 ```bash
 # Option 2: download only the adapter file
 mkdir -p <openclaw-skills-root>/zaomeng-skill
-curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/openclaw-skill/SKILL.md -o <openclaw-skills-root>/zaomeng-skill/SKILL.md
+curl -L https://raw.githubusercontent.com/wkbin/zaomeng/main/openclaw-skill/SKILL.md -o <openclaw-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 Command mapping inside OpenClaw:
@@ -72,15 +72,15 @@ Manual install, choose one:
 
 ```bash
 # Option 1: clone the repo and copy the adapter
-git clone https://github.com/wkbin/Dreamforge.git
+git clone https://github.com/wkbin/zaomeng.git
 mkdir -p <hermes-skills-root>/zaomeng-skill
-cp Dreamforge/hermes-skill/SKILL.md <hermes-skills-root>/zaomeng-skill/SKILL.md
+cp zaomeng/hermes-skill/SKILL.md <hermes-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 ```bash
 # Option 2: download only the adapter file
 mkdir -p <hermes-skills-root>/zaomeng-skill
-curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/hermes-skill/SKILL.md -o <hermes-skills-root>/zaomeng-skill/SKILL.md
+curl -L https://raw.githubusercontent.com/wkbin/zaomeng/main/hermes-skill/SKILL.md -o <hermes-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 Hermes uses the same command mapping as OpenClaw.
@@ -109,15 +109,15 @@ If you prefer not to run the installer script, you can integrate manually:
 
 ```bash
 # Option 1: clone the repo and copy the whole generic skill directory
-git clone https://github.com/wkbin/Dreamforge.git
+git clone https://github.com/wkbin/zaomeng.git
 mkdir -p <your-project-root>/skills
-cp -r Dreamforge/skills/zaomeng-skill <your-project-root>/skills/
+cp -r zaomeng/skills/zaomeng-skill <your-project-root>/skills/
 ```
 
 ```bash
 # Option 2: download only the generic SKILL.md
 mkdir -p <your-project-root>/skills/zaomeng-skill
-curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/skills/zaomeng-skill/SKILL.md -o <your-project-root>/skills/zaomeng-skill/SKILL.md
+curl -L https://raw.githubusercontent.com/wkbin/zaomeng/main/skills/zaomeng-skill/SKILL.md -o <your-project-root>/skills/zaomeng-skill/SKILL.md
 ```
 
 ## Core Commands

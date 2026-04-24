@@ -24,7 +24,7 @@ Copy-Item config.yaml.example config.yaml
 仓库地址：
 
 ```text
-https://github.com/wkbin/Dreamforge.git
+https://github.com/wkbin/zaomeng.git
 ```
 
 ### 接入 OpenClaw
@@ -39,15 +39,15 @@ python scripts/install_skill.py --openclaw-dir <openclaw-skills-root>
 
 ```bash
 # 方式 1：克隆仓库后复制
-git clone https://github.com/wkbin/Dreamforge.git
+git clone https://github.com/wkbin/zaomeng.git
 mkdir -p <openclaw-skills-root>/zaomeng-skill
-cp Dreamforge/openclaw-skill/SKILL.md <openclaw-skills-root>/zaomeng-skill/SKILL.md
+cp zaomeng/openclaw-skill/SKILL.md <openclaw-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 ```bash
 # 方式 2：直接下载单文件
 mkdir -p <openclaw-skills-root>/zaomeng-skill
-curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/openclaw-skill/SKILL.md -o <openclaw-skills-root>/zaomeng-skill/SKILL.md
+curl -L https://raw.githubusercontent.com/wkbin/zaomeng/main/openclaw-skill/SKILL.md -o <openclaw-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 OpenClaw 中对应的命令映射：
@@ -72,15 +72,15 @@ python scripts/install_skill.py --hermes-dir <hermes-skills-root>
 
 ```bash
 # 方式 1：克隆仓库后复制
-git clone https://github.com/wkbin/Dreamforge.git
+git clone https://github.com/wkbin/zaomeng.git
 mkdir -p <hermes-skills-root>/zaomeng-skill
-cp Dreamforge/hermes-skill/SKILL.md <hermes-skills-root>/zaomeng-skill/SKILL.md
+cp zaomeng/hermes-skill/SKILL.md <hermes-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 ```bash
 # 方式 2：直接下载单文件
 mkdir -p <hermes-skills-root>/zaomeng-skill
-curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/hermes-skill/SKILL.md -o <hermes-skills-root>/zaomeng-skill/SKILL.md
+curl -L https://raw.githubusercontent.com/wkbin/zaomeng/main/hermes-skill/SKILL.md -o <hermes-skills-root>/zaomeng-skill/SKILL.md
 ```
 
 Hermes 侧命令映射与 OpenClaw 相同。
@@ -109,15 +109,15 @@ python scripts/install_skill.py --project-root <your-project-root> --skill-name 
 
 ```bash
 # 方式 1：克隆仓库后复制整个通用 skill 目录
-git clone https://github.com/wkbin/Dreamforge.git
+git clone https://github.com/wkbin/zaomeng.git
 mkdir -p <your-project-root>/skills
-cp -r Dreamforge/skills/zaomeng-skill <your-project-root>/skills/
+cp -r zaomeng/skills/zaomeng-skill <your-project-root>/skills/
 ```
 
 ```bash
 # 方式 2：只下载单文件版本
 mkdir -p <your-project-root>/skills/zaomeng-skill
-curl -L https://raw.githubusercontent.com/wkbin/Dreamforge/main/skills/zaomeng-skill/SKILL.md -o <your-project-root>/skills/zaomeng-skill/SKILL.md
+curl -L https://raw.githubusercontent.com/wkbin/zaomeng/main/skills/zaomeng-skill/SKILL.md -o <your-project-root>/skills/zaomeng-skill/SKILL.md
 ```
 
 ## 核心命令
