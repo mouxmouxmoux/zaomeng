@@ -1,0 +1,17 @@
+# RELATION_GRAPH
+
+## 林黛玉_贾宝玉
+
+- trust: 7
+- affection: 8
+- power_gap: 1
+- conflict_point: 表达方式与误解
+- typical_interaction: 黛玉质问->宝玉安抚->短暂缓和
+
+## 林黛玉_薛宝钗
+
+- trust: 6
+- affection: 6
+- power_gap: 0
+- conflict_point: 价值观差异
+- typical_interaction: 宝钗劝和->黛玉观望->情绪降温

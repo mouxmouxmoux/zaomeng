@@ -9,8 +9,8 @@ Required files in this folder:
 - references/safety_policy.md
 - references/validation_policy.md
 - examples/sample_input_excerpt.txt
-- examples/sample_character_profile.json
-- examples/sample_relations.json
+- examples/sample_character_profile.md
+- examples/sample_relations.md
 - examples/test-prompts.json
 
 Optional local integration:

@@ -17,8 +17,8 @@ Prompt templates:
 
 Example files:
 - examples/sample_input_excerpt.txt
-- examples/sample_character_profile.json
-- examples/sample_relations.json
+- examples/sample_character_profile.md
+- examples/sample_relations.md
 - examples/test-prompts.json
 
 Packaging intent:

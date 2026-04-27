@@ -6,7 +6,7 @@ Distill character mind profiles from chunked novel text.
 - character_candidates (optional)
 
 [Output]
-- JSON list following references/output_schema.md (Character Profile schema)
+- Markdown character archive following references/output_schema.md (Character Profile schema)
 
 [Rules]
 1. Extract only evidence present in the text.
@@ -14,4 +14,3 @@ Distill character mind profiles from chunked novel text.
 3. Deduplicate core_traits/typical_lines/decision_rules.
 4. If evidence is sparse, lower confidence and state why.
 5. Never fabricate events not found in chunk_text.
-

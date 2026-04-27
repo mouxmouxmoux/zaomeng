@@ -1,0 +1,17 @@
+# PROFILE
+
+- name: 林黛玉
+- novel_id: sample_novel
+- source_path: data/sample_novel.txt
+- core_traits: 敏感；聪慧；自尊
+- values: 勇气=6；智慧=8；善良=7；忠诚=8；野心=3；正义=6；自由=7；责任=6
+- speech_style: 言辞锋利但情绪克制，常带反讽。
+- typical_lines: 你最会哄人。
+- decision_rules: 感到被轻视->先反讽防御，再观察对方诚意
+- arc_start: 勇气=5
+- arc_mid: 勇气=6；trigger_event=争执与和解
+- arc_end: 勇气=7；final_state=更愿意表达真实需求
+- description_count: 1
+- dialogue_count: 2
+- thought_count: 0
+- chunk_count: 1
