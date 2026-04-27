@@ -13,6 +13,8 @@
 它不是普通陪聊机器人。  
 它更像一个“小说角色引擎”。
 
+许可证：`MIT-0`（MIT No Attribution）
+
 当前推荐版本思路是：
 
 - Markdown-first：人物与关系主存储已经不再以旧版 JSON 为准
@@ -478,3 +480,7 @@ skills/zaomeng-skill/
 clawhub-zaomeng-skill/
 tests/test_relation_behavior.py
 ```
+
+## License
+
+`MIT-0`

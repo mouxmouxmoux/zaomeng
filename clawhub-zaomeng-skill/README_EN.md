@@ -4,6 +4,14 @@
 
 It is not a generic chat template. It is a local rule-based workflow built around one principle: distill first, then let characters speak according to their profiles.
 
+More precisely:
+
+- `zaomeng` is responsible for character distillation, relationship extraction, persona navigation, persistent memory, and OOC constraints
+- in hosts such as OpenClaw, natural-language understanding and the final dialogue generation should still be handled by the host model
+- `zaomeng` is best used as the persona-and-constraint layer, rather than as the sole natural dialogue generator
+
+License: `MIT-0` (MIT No Attribution)
+
 ## What's New In This Version
 
 The current release line is `3.1.0`. The main changes are:
@@ -207,3 +215,7 @@ If you publish this skill on its own, it is best to include at least:
 - `prompts/`
 - `references/`
 - `runtime/`
+
+## License
+
+`MIT-0`

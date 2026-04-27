@@ -6,6 +6,7 @@
 - Name: zaomeng-skill
 - Display Name: 造梦技能
 - Version: 3.1.0
+- License: MIT-0
 - Category: Writing / Roleplay / Character Simulation
 
 ## 风险说明

@@ -23,6 +23,7 @@ Thumbs.db
 config.yaml
 data/
 logs/
+clawhub-zaomeng-skill/runtime/data/
 
 # Internal planning docs (not for public repo)
 PROJECT.md

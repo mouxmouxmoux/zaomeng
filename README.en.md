@@ -13,6 +13,8 @@ It does three things:
 It is not a generic chatbot.  
 It is better understood as a fiction character engine.
 
+License: `MIT-0` (MIT No Attribution)
+
 The current recommended direction is:
 
 - markdown-first storage: character and relation data no longer treat legacy JSON as the source of truth
@@ -516,3 +518,7 @@ skills/zaomeng-skill/
 clawhub-zaomeng-skill/
 tests/test_relation_behavior.py
 ```
+
+## License
+
+`MIT-0`
