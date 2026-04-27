@@ -13,6 +13,51 @@ It does three things:
 It is not a generic chatbot.  
 It is better understood as a fiction character engine.
 
+## Installation
+
+You can choose the installation path that matches how you want to use it.
+
+### 1. Clone the repository directly
+
+If you want to run the full project locally, use the CLI directly, or modify the code, cloning the repo is the best option:
+
+```bash
+git clone https://github.com/wkbin/zaomeng.git
+cd zaomeng
+```
+
+### 2. Install into OpenClaw
+
+If you mainly want to use it as a skill inside OpenClaw:
+
+```bash
+openclaw skills install wkbin/zaomeng-skill
+```
+
+### 3. Install with ClawHub
+
+If you use ClawHub, pick the command that matches your toolchain:
+
+```bash
+npx clawhub@latest install zaomeng-skill
+```
+
+```bash
+pnpm dlx clawhub@latest install zaomeng-skill
+```
+
+```bash
+bunx clawhub@latest install zaomeng-skill
+```
+
+### 4. Install into an existing local skills directory
+
+If your own project already has a `skills/` directory, you can also install the skill there:
+
+```bash
+python scripts/install_skill.py --skills-dir <your-skills-root>
+```
+
 ## Example 1: Act Mode
 
 ```

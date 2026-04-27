@@ -13,6 +13,51 @@
 它不是普通陪聊机器人。  
 它更像一个“小说角色引擎”。
 
+## 安装方式
+
+你可以按自己的使用场景选择安装方式。
+
+### 1. 直接克隆仓库
+
+如果你想本地运行完整项目、直接执行 CLI，或者自己改代码，推荐直接克隆仓库：
+
+```bash
+git clone https://github.com/wkbin/zaomeng.git
+cd zaomeng
+```
+
+### 2. 安装到 OpenClaw
+
+如果你主要是在 OpenClaw 里把它当作 skill 使用，可以直接安装：
+
+```bash
+openclaw skills install wkbin/zaomeng-skill
+```
+
+### 3. 用 ClawHub 安装
+
+如果你使用 ClawHub，可以选你习惯的命令：
+
+```bash
+npx clawhub@latest install zaomeng-skill
+```
+
+```bash
+pnpm dlx clawhub@latest install zaomeng-skill
+```
+
+```bash
+bunx clawhub@latest install zaomeng-skill
+```
+
+### 4. 已有本地 skill 目录时安装
+
+如果你自己的项目里已经有 `skills/` 目录，也可以把仓库里的 skill 安装进去：
+
+```bash
+python scripts/install_skill.py --skills-dir <your-skills-root>
+```
+
 ## 效果示例一：行动模式
 
 ```
