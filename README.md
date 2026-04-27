@@ -2,41 +2,152 @@
 
 [中文](README.md) | [English](README.en.md)
 
-本地小说人物蒸馏、关系抽取、角色群聊与记忆修正工具链。
+本项目是一个把小说文本转成“可运行角色资产”的本地工具链，用来做：
 
-它的目标不是做一个泛用聊天机器人，而是把小说文本转成可复用的角色资产：
+- 人物蒸馏
+- 关系抽取
+- 受约束角色对话
+- 用户纠错写入记忆
+- OpenClaw / Hermes / ClawHub 等 Agent 集成
 
-- 人物档案
-- 关系图谱
-- 对话约束
-- 纠错记忆
-- 可直接接入 Agent 的 skill 包
+它不是通用陪聊模型。它的目标是让角色“像这个人”，而不是“像一个会说话的 AI”。
 
-当前版本基于本地规则引擎运行，不依赖云端模型或 API Key，适合离线分析、角色扮演、同人创作、文学研究和 Agent 编排。
+## 先看这个：现在推荐用自然语言驱动
 
-## 这个项目能做什么
+如果你正在通过 OpenClaw、Hermes、ClawHub 或其他 Agent 工具接入 `zaomeng`，**优先把用户原话直接交给 `chat --mode auto`**，而不是先在外层手写模式判断，再拼接成剧情演示。
+
+推荐心智模型：
+
+- 用户说“进入某种玩法”时，这是**意图启动语**
+- 用户真正开始扮演角色说话时，这才是**角色台词**
+- `zaomeng` 应该负责把前者识别成模式切换，把后者送进角色引擎
+
+### 自然语言到模式的映射
+
+下面这些话，应该优先理解成 **进入 `act` 模式**：
+
+- `让我扮演贾宝玉和林黛玉聊天`
+- `我来扮演贾宝玉，你让林黛玉回我`
+- `我说一句，黛玉回一句`
+- `进入宝黛 act 模式`
+- `我要扮演刘备`
+
+这类句子是“开模式”，**不是宝玉/刘备已经说出口的话**。  
+正确行为应该是：
+
+1. 建立或恢复 `act` 会话
+2. 记住用户控制的是谁
+3. 等用户下一句真正开口，再驱动对方角色回话
+
+下面这些话，应该优先理解成 **进入 `observe` 模式**：
+
+- `进入刘备、张飞、关羽群聊模式`
+- `开启宝黛群聊`
+- `切到 observe 模式`
+
+下面这些话，则是 **直接执行一轮 `observe`**，而不是仅仅切模式：
+
+- `请让大家围绕这件事各说一句`
+- `场景：黛玉初到贾府，请相关人物自然开口`
+- `让众人围绕联合孙权这件事分别表态`
+
+### 给 Agent 的一句话规则
+
+如果用户像是在“描述玩法”，就先切模式。  
+如果用户像是在“以角色身份开口”，再把这句当成真正台词送进去。
+
+### OpenClaw / Hermes 这类工具该怎么理解
+
+推荐外层工具这样处理：
+
+- 收到用户原话，优先原样传给 `zaomeng`
+- 默认走 `chat --mode auto`
+- 不要在外层手动模拟“宝玉会怎么说、黛玉会怎么回”
+- 不要把“让我扮演宝玉和黛玉聊天”改写成“好，我来模拟一段宝黛互动”
+
+也就是说，**自然语言描述玩法是第一入口，CLI 只是执行层**。
+
+## 典型自然语言玩法
+
+### 1. 用户想进入一对一行动模式
+
+用户说：
+
+```text
+让我扮演贾宝玉和林黛玉聊天
+```
+
+预期行为：
+
+- 系统进入 `act`
+- 用户控制 `贾宝玉`
+- 系统优先让 `林黛玉` 作为主要回应对象
+- 返回一个可继续的 `session`
+
+接着用户再说：
+
+```text
+妹妹今日可大安了？
+```
+
+这时才应把这句当成贾宝玉真正的台词，驱动林黛玉回应。
+
+### 2. 用户想进入多人观察模式
+
+用户说：
+
+```text
+进入刘备、张飞、关羽群聊模式
+```
+
+预期行为：
+
+- 系统进入 `observe`
+- 会话角色范围缩到这三人
+- 等待用户给出场景或首句
+
+接着用户说：
+
+```text
+刘备：二位贤弟，近日战事稍歇，倒是难得清闲。
+```
+
+这时再让张飞、关羽基于各自设定回应。
+
+### 3. 用户想让大家直接开口
+
+用户说：
+
+```text
+请让大家围绕联合孙权这件事各说一句
+```
+
+预期行为：
+
+- 这是一次真实的 `observe` 发言
+- 不要只回复“已进入 observe 模式”
+- 应直接输出相关角色的回应
+
+## 核心能力
 
 ### 1. 人物蒸馏
 
-从 `.txt` 或 `.epub` 小说中抽取主要角色，输出结构化人物画像，包括：
+从 `.txt` 或 `.epub` 小说中提取主要角色，输出人格化角色档案，包括：
 
-- 核心性格特征 `core_traits`
-- 价值观维度 `values`
-- 语言风格 `speech_style`
-- 代表性台词 `typical_lines`
-- 行为决策倾向 `decision_rules`
-- 阶段性人物弧光 `arc`
-- 证据计数 `evidence`
-
-适合做：
-
-- 角色档案整理
-- 原著人物设定提炼
-- 后续群聊和剧情实验的底层资产
+- `core_traits`
+- `values`
+- `speech_style`
+- `typical_lines`
+- `decision_rules`
+- `identity_anchor`
+- `soul_goal`
+- `life_experience`
+- `taboo_topics`
+- `forbidden_behaviors`
 
 ### 2. 关系抽取
 
-从小说中生成角色关系图谱，当前输出字段包括：
+从小说中生成关系图谱，当前核心字段包括：
 
 - `trust`
 - `affection`
@@ -44,306 +155,104 @@
 - `conflict_point`
 - `typical_interaction`
 
-当前关系建边策略已经收紧到“同句共现”，比粗糙的 chunk 共现更适合做后续群聊约束。
-
-### 3. 角色群聊
-
-基于蒸馏出的角色档案和关系图谱，启动本地多角色对话。
+### 3. 角色对话
 
 支持两种模式：
 
 - `observe`
-  你给出一个场景或一句引导语，系统让角色围绕它展开互动
+  你给出场景或引导语，角色们围绕它自然互动
 - `act`
-  你控制某个角色发言，其他角色按自身设定和关系状态回复
+  你控制一个角色发言，其余角色按设定和关系状态回话
 
-群聊过程中支持：
+对话过程支持：
 
-- `/save` 保存会话
-- `/reflect` 检查最近发言是否偏离人设
-- `/correct 角色|对象|原句|修正句|原因` 写入纠错记忆
-- `/quit` 退出会话
+- `/save`
+- `/reflect`
+- `/correct 角色|对象|原句|修正句|原因`
+- `/quit`
 
-### 4. 记忆修正
+### 4. 纠错记忆
 
-当角色说出明显不符合原著设定的话时，可以把修正写入本地记忆：
+如果某句明显 OOC，可以把修正写入本地记忆。后续生成时会尽量规避相同偏差。
 
-```bash
-python -m src.core.main correct \
-  --session <session_id> \
-  --message "宝玉说要离开贾府经商" \
-  --corrected "宝玉对仕途经济不感兴趣，只愿与姐妹们作诗赏花" \
-  --character 贾宝玉
-```
+### 5. Markdown 人格包
 
-修正数据会落到 `data/corrections/`，后续聊天会尝试避免重复出现类似的 OOC 行为。
+当前人物主存储已经是 Markdown，不再以旧版 JSON 为准。
 
-### 5. Agent 快速接入
+每个角色会落在：
 
-当前仓库同时提供：
+- `data/characters/<novel_id>/<角色名>/PROFILE.md`
+- `data/characters/<novel_id>/<角色名>/NAVIGATION.md`
+- `data/characters/<novel_id>/<角色名>/SOUL.md`
+- `data/characters/<novel_id>/<角色名>/IDENTITY.md`
+- `data/characters/<novel_id>/<角色名>/AGENTS.md`
+- `data/characters/<novel_id>/<角色名>/MEMORY.md`
+- `data/characters/<novel_id>/<角色名>/RELATIONS.md`
 
-- `openclaw-skill/`
-- `hermes-skill/`
-- `skills/zaomeng-skill/`
-- `clawhub-zaomeng-skill/`
+运行时会先读取 `NAVIGATION.generated.md`，再叠加 `NAVIGATION.md`，按 `load_order` 加载人格层。
 
-可以直接接入 OpenClaw、Hermes Agent、ClawHub CLI 或你自己的本地项目。
+## 给 Agent 集成方的建议
 
-## 核心玩法
+### 推荐调用策略
 
-### 玩法一：先蒸馏人物，再进入群聊
-
-以《红楼梦》为例：
-
-```bash
-python -m src.core.main distill --novel data/hongloumeng.txt --characters 林黛玉,贾宝玉 --force
-python -m src.core.main extract --novel data/hongloumeng.txt --force
-```
-
-这一步会在小说级目录下生成角色档案和关系文件：
-
-- `data/characters/hongloumeng/<角色名>/PROFILE.md`
-- `data/relations/hongloumeng/hongloumeng_relations.md`
-
-现在系统已经支持指定角色时的两字别名匹配，例如：
-
-- `林黛玉 -> 黛玉`
-- `贾宝玉 -> 宝玉`
-
-所以即使正文里常写“黛玉”“宝玉”，蒸馏和关系抽取也能更稳地命中证据。
-
-### 玩法二：观察模式
-
-```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode observe --message "请让大家围绕黛玉初到贾府时的见面场景各说一句。"
-```
-
-这个模式不是“自动无输入跑完”，而是交互式会话。你应该先给系统一个起始场景或一句引导语，例如：
+优先这样做：
 
 ```text
-请让大家围绕黛玉初到贾府时的见面场景各说一句。
+拿到用户原话 -> 直接交给 zaomeng -> 让 zaomeng 判断 act / observe / setup-only
 ```
 
-适合做：
-
-- 观察角色自然互动
-- 看关系参数如何影响说话方式
-- 验证人物蒸馏是否贴近原著
-
-### 玩法三：行动模式
-
-```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode act --character 林黛玉 --message "宝玉，你今日为何这样看我？"
-```
-
-这个模式下你控制指定角色发言，其他角色回应。推荐直接输入一个具体意图，例如：
+不推荐这样做：
 
 ```text
-我先表态，你们再接。
+拿到用户原话 -> 外层代理自己脑补玩法 -> 手动模拟剧情 -> 再说“这是 act 模式”
 ```
 
-或者更像剧情推进的开场：
+### Skill 层应该遵守的原则
 
-```text
-宝玉，你今日怎么又来得这样晚？
-```
+- 不要手动模拟角色接龙
+- 不要把“进入某模式”误写成角色对白
+- 不要把 `zaomeng` 当成普通聊天模型
+- 不要只依赖旧版 JSON 字段理解角色
+- 要把 Markdown 人格文件当成当前主设定来源
 
-适合做：
+## CLI 用法
 
-- 沉浸式角色扮演
-- 测试某个角色在特定关系下的回应
-- 做剧情分支实验
+CLI 仍然可直接调用，但这里放在后面。  
+如果你是人类开发者或在调试集成，可以直接用。
 
-### 玩法四：查看角色档案
+### 推荐：自动意图解析
 
 ```bash
-python -m src.core.main view --character 林黛玉 --novel data/hongloumeng.txt
-python -m src.core.main view --character 贾宝玉 --novel data/hongloumeng.txt
+python -m src.core.main chat --novel <path-or-name> --mode auto --message "<用户原话>"
 ```
 
-当前 `view` 命令一次查看一个角色。如果你要批量看多个角色，最直接的方式是浏览：
-
-- `data/characters/<novel_id>/`
-
-适合做：
-
-- 检查蒸馏结果
-- 对比不同角色的语言风格和价值观
-- 为后续手动调参提供依据
-
-### 玩法五：手动调关系，再进群聊
-
-如果你觉得自动抽取的关系不够细，完全可以手动编辑关系文件，再重新进入群聊：
-
-- 查看现有关系：`data/relations/hongloumeng/hongloumeng_relations.md`
-- 手动补充或调整某组角色关系
-- 再运行 `chat`
-
-例如你可以手动写入：
-
-```json
-{
-  "林黛玉_贾宝玉": {
-    "trust": 8,
-    "affection": 9,
-    "power_gap": 2,
-    "conflict_point": "金玉良缘 vs 木石前盟",
-    "typical_interaction": "黛玉质问，宝玉安抚，情绪短暂缓和"
-  }
-}
-```
-
-这类手动调校特别适合原著里关系复杂、情感层次多、但自动规则还难以完全覆盖的角色对。
-
-## 红楼梦示例
-
-### 示例 1：观察黛玉与宝玉的互动
+例如：
 
 ```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode observe --message "场景：荣国府内，黛玉初到贾府，宝玉第一次见到她。请让相关角色自然开口。"
+python -m src.core.main chat --novel data/hongloumeng.txt --mode auto --message "让我扮演贾宝玉和林黛玉聊天"
+python -m src.core.main chat --novel data/hongloumeng.txt --session <session_id> --message "妹妹今日可大安了？"
 ```
-
-首轮输入可以这样写：
-
-```text
-场景：荣国府内，黛玉初到贾府，宝玉第一次见到她。请让相关角色自然开口。
-```
-
-### 示例 2：你来扮演黛玉
 
 ```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode act --character 林黛玉 --message "宝玉，你今日为何这样看我？"
+python -m src.core.main chat --novel data/sanguo.txt --mode auto --message "进入刘备、张飞、关羽群聊模式"
+python -m src.core.main chat --novel data/sanguo.txt --session <session_id> --message "刘备：二位贤弟，近日战事稍歇。"
 ```
 
-你可以输入：
-
-```text
-宝玉，你今日为何这样看我？
-```
-
-### 示例 3：修正一次出戏发言
+### 显式指定模式
 
 ```bash
-python -m src.core.main correct \
-  --session <session_id> \
-  --message "宝玉打算离家创业" \
-  --corrected "宝玉对仕途经济一向厌弃，更愿沉在闺阁诗酒之中" \
-  --character 贾宝玉
+python -m src.core.main chat --novel <path-or-name> --mode observe --message "<提示语>"
+python -m src.core.main chat --novel <path-or-name> --mode act --character <name> --message "<角色台词>"
 ```
 
-## 适合怎么玩
-
-### 1. 同人创作
-
-- 让原著角色进入平行剧情
-- 测试“如果当时说了另一句话”会怎样
-- 写角色之间的补完对话
-
-### 2. 文学研究
-
-- 量化对比角色性格特征
-- 从关系图角度看人物网络
-- 分析不同角色的语言风格和互动模式
-
-### 3. 剧情实验
-
-- 给一个关键情节作为起始 prompt
-- 改写某个冲突点
-- 观察不同关系参数下角色行为如何变化
-
-### 4. Agent 场景
-
-- 把小说角色当作可复用人格资产
-- 接入 OpenClaw / Hermes / ClawHub
-- 用在多角色模拟、剧情树实验、角色约束测试里
-
-## 可调配置
-
-### 1. 价值观维度
-
-你可以在 `config.yaml` 里调整人物价值观维度，让它更适配具体作品：
-
-```yaml
-distillation:
-  values_dimensions:
-    - "情缘"
-    - "才情"
-    - "命运"
-    - "家族责任"
-    - "个人追求"
-    - "礼教束缚"
-```
-
-### 2. 群聊参数
-
-```yaml
-chat_engine:
-  max_history_turns: 20
-  max_speakers_per_turn: 6
-  token_limit_per_turn: 800
-```
-
-适合做：
-
-- 增加对话上下文长度
-- 提高同场角色数量
-- 放大复杂场景下的对话容量
-
-## 命令总览
+### 其他命令
 
 ```bash
 python -m src.core.main distill --novel <path> [--characters A,B] [--output <dir>] [--force]
 python -m src.core.main extract --novel <path> [--output <path>] [--force]
-python -m src.core.main chat --novel <path-or-name> --mode auto|observe|act [--character <name>] [--session <id>] [--message <text>]
 python -m src.core.main view --character <name> [--novel <path-or-name>]
 python -m src.core.main correct --session <id> --message <raw> --corrected <fixed> [--character <name>] [--target <name>] [--reason <text>]
 ```
-
-交互说明：
-
-- `chat` 是交互式命令，进入前应先准备首轮输入
-- `distill` / `extract` 默认会要求费用确认
-- 在 Agent 或工具驱动场景中，应先征得用户同意，再使用 `--force`
-
-## 快速接入
-
-仓库地址：
-
-```text
-https://github.com/wkbin/zaomeng.git
-```
-
-### OpenClaw
-
-推荐安装：
-
-```bash
-openclaw skills install wkbin/zaomeng-skill
-```
-
-### 你自己的项目
-
-推荐使用 ClawHub CLI：
-
-```bash
-npx clawhub@latest install zaomeng-skill
-```
-
-如果你的项目已经有 `skills/` 目录，也可以直接安装：
-
-```bash
-python scripts/install_skill.py --skills-dir <your-skills-root>
-```
-
-## 当前实现说明
-
-- 输入格式支持 `.txt` 和 `.epub`
-- 角色档案默认按小说隔离输出到 `data/characters/<novel_id>/`
-- 关系结果默认输出到 `data/relations/<novel_id>/`
-- 群聊会优先读取对应小说范围内的人物与关系数据
-- 关系抽取当前使用同句共现和规则打分，稳定但仍有上限
-- `view` 当前一次只查看一个角色
-- 项目当前以本地规则引擎为主，不依赖外部云端模型
 
 ## 项目结构
 
@@ -361,90 +270,3 @@ skills/zaomeng-skill/
 clawhub-zaomeng-skill/
 tests/test_relation_behavior.py
 ```
-
-## Persona Files
-
-Current `distill` output is markdown-based.
-
-For each character, the system now also exports an editable persona bundle under:
-
-- `data/characters/<novel_id>/<角色名>/PROFILE.md`
-- `data/characters/<novel_id>/<角色名>/SOUL.md`
-- `data/characters/<novel_id>/<角色名>/NAVIGATION.md`
-- `data/characters/<novel_id>/<角色名>/IDENTITY.md`
-- `data/characters/<novel_id>/<角色名>/AGENTS.md`
-- `data/characters/<novel_id>/<角色名>/MEMORY.md`
-- `data/characters/<novel_id>/<角色名>/RELATIONS.md`
-
-It also keeps matching `*.generated.md` files so you can compare auto-distilled output with your hand-edited version.
-
-Runtime now reads `NAVIGATION.generated.md` first, then applies `NAVIGATION.md` overrides, then loads only the files declared in `load_order`. Optional layers such as `GOALS.md`, `STYLE.md`, `TRAUMA.md`, and `RELATIONS.md` are created only when distillation or later editing actually needs them.
-
-Character profile storage is markdown-only. Distillation writes the canonical archive into `PROFILE.md` / `PROFILE.generated.md`.
-All `data/...` output paths are resolved from the repo root or the active `config.yaml` directory, not from the caller's current working directory.
-
-## Natural Language Intent Routing
-
-`chat` now supports `--mode auto` and can infer whether the user is asking to:
-
-- enter `act` mode
-- enter `observe` mode
-- continue an existing in-character turn
-
-Recommended pattern for agents:
-
-```bash
-python -m src.core.main chat --novel <path-or-name> --mode auto --message "<raw user request>"
-```
-
-Examples:
-
-```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode auto --message "让我扮演贾宝玉和林黛玉聊天"
-python -m src.core.main chat --novel data/hongloumeng.txt --session <session_id> --message "妹妹今日可大安了？"
-```
-
-```bash
-python -m src.core.main chat --novel data/sanguo.txt --mode auto --message "进入刘备、张飞、关羽群聊模式"
-python -m src.core.main chat --novel data/sanguo.txt --session <session_id> --message "刘备：二位贤弟，今日总算得片刻清闲。"
-```
-
-Important behavior:
-
-- Requests like `让我扮演贾宝玉和林黛玉聊天` or `我说一句，黛玉回一句` are treated as setup-only intent, not as the character's spoken line.
-- In setup-only `act` requests, zaomeng stores the controlled role in the session. Follow-up turns can continue with `--session <id> --message "<你的台词>"` without repeating `--character`, unless you want to switch roles.
-- Requests like `请让大家围绕这件事各说一句` are still treated as a real `observe` turn and will immediately produce replies.
-
-These files are used as runtime inputs:
-
-- `PROFILE.md`: the canonical markdown character archive containing name, novel scope, values, evidence, arc, and base voice data
-- `NAVIGATION.md`: the persona entrypoint and routing map; it declares load order, which files are active, and which behavior should be sourced from which file
-- `SOUL.md`: identity anchor, soul goal, worldview, speech constraints, taboo topics, forbidden behaviors
-- `GOALS.md`: optional long-term drive, decision pressure, and strategic preference layer
-- `STYLE.md`: optional wording, cadence, signature phrases, and emotional surface layer
-- `TRAUMA.md`: optional scars, taboo triggers, and hard boundaries layer
-- `IDENTITY.md`: experience, typical lines, decision habits, emotional style
-- `AGENTS.md`: group-chat behavior rules, silence boundaries, and runtime behavior rules after navigation is resolved
-- `MEMORY.md`: stable memory, user edits, notable interactions, relationship updates
-- `RELATIONS.md`: per-character editable relation overlay for trust, affection, appellations, conflict focus, and interaction style
-
-Runtime loading now prefers these editable persona files and then merges them back into the structured profile. In practice, editing `SOUL.md` / `IDENTITY.md` / `AGENTS.md` / `MEMORY.md` will change later character replies.
-
-## Runtime Memory Writes
-
-This version also writes character constraints back during chat, not only through manual file edits:
-
-- If a user prompt contains durable guidance such as `记住` / `以后` / `不要` / `改成` / `纠正` / `必须`, and it explicitly names a character, that guidance is appended to the target character's `MEMORY.md`
-- `/correct 角色|对象|原句|修正句|原因` still writes to `data/corrections/`, and now also writes into the target character's `MEMORY.md`
-- These memory entries are loaded again on later turns and can affect cadence, taboo boundaries, value emphasis, and behavior constraints
-
-Recommended workflow:
-
-- Use explicit durable prompts when you want to train long-term behavior
-- Use `/correct` when you want to pin a clear anti-OOC correction
-- Edit `NAVIGATION.md` when you want to change which persona files are active or their load order
-- Edit `SOUL.md` / `MEMORY.md` directly when you want full manual control
-
-## License
-
-[MIT](LICENSE)

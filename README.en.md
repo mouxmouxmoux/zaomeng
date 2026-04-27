@@ -1,42 +1,156 @@
-# 造梦.skill
+# zaomeng.skill
 
 [中文](README.md) | [English](README.en.md)
 
-Local toolkit for novel character distillation, relationship extraction, roleplay chat, and correction memory.
+Local toolkit for turning novels into reusable, constrained character assets:
 
-This project is not meant to be a generic chatbot. Its purpose is to turn novel text into reusable character assets:
-
-- character profiles
-- relationship graphs
-- dialogue constraints
+- character distillation
+- relationship extraction
+- constrained roleplay chat
 - correction memory
-- agent-ready skill packages
+- agent integration for OpenClaw, Hermes, ClawHub, and similar tools
 
-The current version runs on a local rule engine and does not require any cloud model or API key. It is suitable for offline analysis, roleplay experiments, fanfiction workflows, literature research, and agent orchestration.
+This is not a generic chatbot. The goal is to make characters behave like themselves, not like a generic assistant wearing a costume.
 
-## What It Does
+## Read This First: Natural Language Is The Primary Interface
+
+If you are integrating `zaomeng` through OpenClaw, Hermes, ClawHub, or another agent layer, the recommended approach is:
+
+- pass the user's raw request into `chat --mode auto`
+- let `zaomeng` decide whether the request is a mode switch or an actual spoken line
+- avoid manually simulating the scene outside the engine
+
+Recommended mental model:
+
+- if the user is describing a play pattern, that is a **mode-intent request**
+- if the user is speaking as a character, that is an **in-character line**
+- `zaomeng` should map the first case to mode setup and the second case to turn execution
+
+### Natural Language To Mode Mapping
+
+Requests like these should usually mean **enter `act` mode**:
+
+- `Let me play Jia Baoyu and chat with Lin Daiyu`
+- `I'll play Jia Baoyu, you make Lin Daiyu reply to me`
+- `I say one line, Daiyu answers one line`
+- `Enter Bao-Dai act mode`
+- `I want to play Liu Bei`
+
+These are setup requests, not spoken dialogue lines.
+
+Expected behavior:
+
+1. create or resume an `act` session
+2. remember which role the user controls
+3. wait for the user's next actual line before generating the other character's reply
+
+Requests like these should usually mean **enter `observe` mode**:
+
+- `Enter Liu Bei, Zhang Fei, Guan Yu group chat mode`
+- `Start a Bao-Dai group chat`
+- `Switch to observe mode`
+
+Requests like these should mean **run one real `observe` turn immediately**, not just switch modes:
+
+- `Let everyone say one line about this matter`
+- `Scene: Daiyu arrives at the Jia household. Let the relevant characters begin naturally`
+- `Have everyone react to the alliance with Sun Quan`
+
+### One Rule For Agent Builders
+
+If the user sounds like they are describing the gameplay, switch mode first.  
+If the user sounds like they are already speaking in character, run the line.
+
+### What OpenClaw / Hermes Style Tools Should Do
+
+- keep the user's original wording whenever possible
+- default to `chat --mode auto`
+- do not rewrite setup requests into freeform scene demos
+- do not answer `Let me play Baoyu and chat with Daiyu` with `Sure, here's a simulated Bao-Dai interaction...`
+
+Natural language intent should be the first-class entry point. CLI is the execution layer underneath.
+
+## Typical Natural Language Flows
+
+### 1. User wants one-to-one act mode
+
+User says:
+
+```text
+让我扮演贾宝玉和林黛玉聊天
+```
+
+Expected behavior:
+
+- enter `act`
+- set `贾宝玉` as the controlled role
+- prioritize `林黛玉` as the reply target
+- return a resumable session
+
+Then the user says:
+
+```text
+妹妹今日可大安了？
+```
+
+Only now should this be treated as Baoyu's actual line.
+
+### 2. User wants multi-character observe mode
+
+User says:
+
+```text
+进入刘备、张飞、关羽群聊模式
+```
+
+Expected behavior:
+
+- enter `observe`
+- scope the session to those characters
+- wait for the next scene prompt or opening line
+
+Then the user says:
+
+```text
+刘备：二位贤弟，近日战事稍歇，倒是难得清闲。
+```
+
+Now Zhang Fei and Guan Yu should respond in character.
+
+### 3. User wants everyone to speak right away
+
+User says:
+
+```text
+请让大家围绕联合孙权这件事各说一句
+```
+
+Expected behavior:
+
+- treat it as a real `observe` turn
+- do not only reply with `observe mode activated`
+- generate the character replies immediately
+
+## Core Capabilities
 
 ### 1. Character Distillation
 
-Extract major characters from `.txt` or `.epub` novels and build structured profiles, including:
+Extract major characters from `.txt` or `.epub` novels and build persona-rich profiles, including:
 
 - `core_traits`
 - `values`
 - `speech_style`
 - `typical_lines`
 - `decision_rules`
-- `arc`
-- `evidence`
-
-Useful for:
-
-- organizing character sheets
-- summarizing original character design
-- producing reusable assets for later chat and story experiments
+- `identity_anchor`
+- `soul_goal`
+- `life_experience`
+- `taboo_topics`
+- `forbidden_behaviors`
 
 ### 2. Relationship Extraction
 
-Build a relationship graph from the novel. Current fields include:
+Build a relationship graph from the novel. Current core fields include:
 
 - `trust`
 - `affection`
@@ -44,20 +158,16 @@ Build a relationship graph from the novel. Current fields include:
 - `conflict_point`
 - `typical_interaction`
 
-The current edge-building strategy is sentence-level co-occurrence, which is more conservative and more useful for downstream roleplay than rough chunk-level co-occurrence.
-
 ### 3. Roleplay Chat
 
-Start local multi-character dialogue using distilled profiles and relationship data.
-
-Supported modes:
+Two supported modes:
 
 - `observe`
-  You provide a scene or opening prompt, and the system lets characters react naturally.
+  You provide a scene or prompt and the characters interact around it.
 - `act`
-  You control one character, and the rest respond according to profile and relationship state.
+  You control one character and the others reply based on persona and relationship state.
 
-During chat, the system supports:
+Chat supports:
 
 - `/save`
 - `/reflect`
@@ -66,284 +176,85 @@ During chat, the system supports:
 
 ### 4. Correction Memory
 
-When a character says something clearly out of character, you can save a correction:
+If a line is clearly out of character, you can save a correction and later runs will try to avoid the same mistake.
 
-```bash
-python -m src.core.main correct \
-  --session <session_id> \
-  --message "Baoyu says he wants to leave the Jia household and become a merchant" \
-  --corrected "Baoyu has little interest in worldly ambition and would rather stay among poetry, gardens, and the inner household" \
-  --character 贾宝玉
-```
+### 5. Markdown Persona Bundle
 
-Corrections are stored in `data/corrections/` and later chat runs try to avoid repeating similar OOC behavior.
+Character storage is now markdown-first, not legacy JSON-first.
 
-### 5. Fast Agent Integration
+Each character lives under:
 
-The repository ships with:
+- `data/characters/<novel_id>/<character>/PROFILE.md`
+- `data/characters/<novel_id>/<character>/NAVIGATION.md`
+- `data/characters/<novel_id>/<character>/SOUL.md`
+- `data/characters/<novel_id>/<character>/IDENTITY.md`
+- `data/characters/<novel_id>/<character>/AGENTS.md`
+- `data/characters/<novel_id>/<character>/MEMORY.md`
+- `data/characters/<novel_id>/<character>/RELATIONS.md`
 
-- `openclaw-skill/`
-- `hermes-skill/`
-- `skills/zaomeng-skill/`
-- `clawhub-zaomeng-skill/`
+Runtime reads `NAVIGATION.generated.md` first, then applies `NAVIGATION.md`, and follows `load_order`.
 
-You can plug the project into OpenClaw, Hermes Agent, ClawHub CLI, or your own local project.
+## Guidance For Agent Integrators
 
-## Core Play Patterns
+### Recommended Strategy
 
-### Pattern 1: Distill characters first, then enter chat
-
-Using *Dream of the Red Chamber* as an example:
-
-```bash
-python -m src.core.main distill --novel data/hongloumeng.txt --characters 林黛玉,贾宝玉 --force
-python -m src.core.main extract --novel data/hongloumeng.txt --force
-```
-
-This generates novel-scoped outputs:
-
-- `data/characters/hongloumeng/<character>/PROFILE.md`
-- `data/relations/hongloumeng/hongloumeng_relations.md`
-
-The system now supports reliable two-character aliases when explicit targets are provided, for example:
-
-- `林黛玉 -> 黛玉`
-- `贾宝玉 -> 宝玉`
-
-So even if the source text frequently uses `黛玉` and `宝玉` instead of full names, distillation and relationship extraction can still match the evidence more reliably.
-
-### Pattern 2: Observe mode
-
-```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode observe --message "Please let everyone speak around Daiyu's arrival at the Jia household."
-```
-
-This is not a fire-and-forget command. It is an interactive session, so you should provide an opening prompt such as:
+Prefer this:
 
 ```text
-Please let everyone speak naturally around Daiyu's arrival at the Jia household.
+take the user's raw request -> send it to zaomeng -> let zaomeng decide act / observe / setup-only
 ```
 
-Useful for:
-
-- observing natural interaction between characters
-- seeing how relationship values affect tone and behavior
-- checking whether the distilled personas feel faithful to the source
-
-### Pattern 3: Act mode
-
-```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode act --character 林黛玉 --message "Baoyu, why are you looking at me like that today?"
-```
-
-In this mode, you control the named character and others reply. Good first turns include:
+Avoid this:
 
 ```text
-I will speak first. The rest of you continue from there.
+take the raw request -> invent the play pattern outside the engine -> manually simulate the scene -> claim it is act mode
 ```
 
-Or something more scene-specific:
+### Rules For Skill Layers
 
-```text
-Baoyu, why did you arrive so late again today?
-```
+- do not manually simulate role chains
+- do not treat mode-switch requests as spoken dialogue
+- do not treat `zaomeng` as a generic chat model
+- do not rely only on legacy JSON assumptions
+- do treat markdown persona files as the primary source of truth
 
-Useful for:
+## CLI Usage
 
-- immersive roleplay
-- testing a character under a specific relationship state
-- branching-scene experiments
+CLI is still available directly, but it comes after the natural-language guidance because it is the execution layer, not the primary product experience.
 
-### Pattern 4: Inspect a character profile
+### Recommended: automatic intent routing
 
 ```bash
-python -m src.core.main view --character 林黛玉 --novel data/hongloumeng.txt
-python -m src.core.main view --character 贾宝玉 --novel data/hongloumeng.txt
+python -m src.core.main chat --novel <path-or-name> --mode auto --message "<raw user request>"
 ```
 
-`view` currently shows one character at a time. For multiple characters, browse:
-
-- `data/characters/<novel_id>/`
-
-Useful for:
-
-- checking distillation quality
-- comparing values and speech styles across roles
-- preparing manual adjustments
-
-### Pattern 5: Edit relationships, then re-enter chat
-
-If the automatic relationship extraction is not detailed enough, you can edit the relation file manually and then run chat again:
-
-- inspect `data/relations/hongloumeng/hongloumeng_relations.md`
-- adjust or add a specific pair
-- run `chat` again
-
-For example:
-
-```json
-{
-  "林黛玉_贾宝玉": {
-    "trust": 8,
-    "affection": 9,
-    "power_gap": 2,
-    "conflict_point": "Golden Jade destiny vs. Wood-Stone bond",
-    "typical_interaction": "Daiyu questions him, Baoyu tries to soothe her, tension softens briefly"
-  }
-}
-```
-
-This is especially useful for relationships with layered emotional history that current rules cannot fully reconstruct.
-
-## Dream Of The Red Chamber Examples
-
-### Example 1: Observe Daiyu and Baoyu
+Examples:
 
 ```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode observe --message "Scene: Inside Rongguo House, Daiyu has just arrived, and Baoyu is meeting her for the first time. Let the relevant characters begin naturally."
+python -m src.core.main chat --novel data/hongloumeng.txt --mode auto --message "让我扮演贾宝玉和林黛玉聊天"
+python -m src.core.main chat --novel data/hongloumeng.txt --session <session_id> --message "妹妹今日可大安了？"
 ```
-
-Suggested first turn:
-
-```text
-Scene: Inside Rongguo House, Daiyu has just arrived, and Baoyu is meeting her for the first time. Let the relevant characters begin naturally.
-```
-
-### Example 2: You play Daiyu
 
 ```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode act --character 林黛玉 --message "Baoyu, why are you looking at me like that today?"
+python -m src.core.main chat --novel data/sanguo.txt --mode auto --message "进入刘备、张飞、关羽群聊模式"
+python -m src.core.main chat --novel data/sanguo.txt --session <session_id> --message "刘备：二位贤弟，近日战事稍歇。"
 ```
 
-You might type:
-
-```text
-Baoyu, why are you looking at me like that today?
-```
-
-### Example 3: Correct an OOC reply
+### Explicit modes
 
 ```bash
-python -m src.core.main correct \
-  --session <session_id> \
-  --message "Baoyu plans to leave home and build a business" \
-  --corrected "Baoyu despises worldly advancement and would rather remain in the world of poetry, gardens, and the inner chambers" \
-  --character 贾宝玉
+python -m src.core.main chat --novel <path-or-name> --mode observe --message "<prompt>"
+python -m src.core.main chat --novel <path-or-name> --mode act --character <name> --message "<spoken line>"
 ```
 
-## Good Use Cases
-
-### 1. Fanfiction workflows
-
-- place original characters into alternate scenarios
-- test how a scene changes if one crucial line is different
-- draft missing conversations between known characters
-
-### 2. Literature research
-
-- compare character traits in a structured way
-- analyze the social graph of a novel
-- study dialogue style and interaction patterns
-
-### 3. Story experiments
-
-- begin from a canonical scene prompt
-- modify a conflict point
-- observe how different relationship values change behavior
-
-### 4. Agent use
-
-- reuse characters as persona assets
-- plug them into OpenClaw / Hermes / ClawHub workflows
-- use them for multi-agent simulation, branching narrative experiments, or persona-constraint testing
-
-## Configuration
-
-### 1. Value dimensions
-
-You can adapt `values_dimensions` in `config.yaml` to better fit a specific work:
-
-```yaml
-distillation:
-  values_dimensions:
-    - "情缘"
-    - "才情"
-    - "命运"
-    - "家族责任"
-    - "个人追求"
-    - "礼教束缚"
-```
-
-### 2. Chat parameters
-
-```yaml
-chat_engine:
-  max_history_turns: 20
-  max_speakers_per_turn: 6
-  token_limit_per_turn: 800
-```
-
-Useful for:
-
-- keeping more context
-- allowing more speakers per round
-- increasing dialogue capacity in dense scenes
-
-## Command Overview
+### Other commands
 
 ```bash
 python -m src.core.main distill --novel <path> [--characters A,B] [--output <dir>] [--force]
 python -m src.core.main extract --novel <path> [--output <path>] [--force]
-python -m src.core.main chat --novel <path-or-name> --mode auto|observe|act [--character <name>] [--session <id>] [--message <text>]
 python -m src.core.main view --character <name> [--novel <path-or-name>]
 python -m src.core.main correct --session <id> --message <raw> --corrected <fixed> [--character <name>] [--target <name>] [--reason <text>]
 ```
-
-Interaction notes:
-
-- `chat` is interactive, so prepare the first user turn before entering the session
-- `distill` and `extract` ask for confirmation by default
-- in agent-driven or tool-driven flows, get user approval first and then use `--force`
-
-## Quick Integration
-
-Repository:
-
-```text
-https://github.com/wkbin/zaomeng.git
-```
-
-### OpenClaw
-
-Recommended:
-
-```bash
-openclaw skills install wkbin/zaomeng-skill
-```
-
-### Your Own Project
-
-Recommended via ClawHub CLI:
-
-```bash
-npx clawhub@latest install zaomeng-skill
-```
-
-If your project already has a `skills/` directory:
-
-```bash
-python scripts/install_skill.py --skills-dir <your-skills-root>
-```
-
-## Current Implementation Notes
-
-- Input formats: `.txt` and `.epub`
-- Character profiles are written to `data/characters/<novel_id>/`
-- Relationship graphs are written to `data/relations/<novel_id>/`
-- Chat loads novel-scoped character and relation data first
-- Relationship scoring is currently rule-based and sentence-scoped: reliable, but still limited
-- `view` currently shows one character at a time
-- The current system is local-rule-engine-first and does not rely on external cloud models
 
 ## Project Structure
 
@@ -361,85 +272,3 @@ skills/zaomeng-skill/
 clawhub-zaomeng-skill/
 tests/test_relation_behavior.py
 ```
-
-## Persona Files
-
-`distill` now exports markdown-first persona bundles.
-
-For each character, the system also creates an editable persona bundle under:
-
-- `data/characters/<novel_id>/<character>/PROFILE.md`
-- `data/characters/<novel_id>/<character>/SOUL.md`
-- `data/characters/<novel_id>/<character>/NAVIGATION.md`
-- `data/characters/<novel_id>/<character>/IDENTITY.md`
-- `data/characters/<novel_id>/<character>/AGENTS.md`
-- `data/characters/<novel_id>/<character>/MEMORY.md`
-- `data/characters/<novel_id>/<character>/RELATIONS.md`
-
-Matching `*.generated.md` files are kept beside them so you can compare generated defaults with your hand-edited version.
-
-Runtime now reads `NAVIGATION.generated.md` first, then applies `NAVIGATION.md` overrides, then loads only the files declared in `load_order`. Optional layers such as `GOALS.md`, `STYLE.md`, `TRAUMA.md`, and `RELATIONS.md` are created only when distillation or later editing actually needs them.
-
-Character profile storage is markdown-only. Distillation writes the canonical archive into `PROFILE.md` / `PROFILE.generated.md`.
-All `data/...` output paths are resolved from the repo root or the active `config.yaml` directory, not from the caller's current working directory.
-
-## Natural Language Intent Routing
-
-`chat` now supports `--mode auto` and can infer whether the user is asking to:
-
-- enter `act` mode
-- enter `observe` mode
-- continue an existing in-character turn
-
-Recommended agent pattern:
-
-```bash
-python -m src.core.main chat --novel <path-or-name> --mode auto --message "<raw user request>"
-```
-
-Examples:
-
-```bash
-python -m src.core.main chat --novel data/hongloumeng.txt --mode auto --message "Let me play Jia Baoyu and chat with Lin Daiyu"
-python -m src.core.main chat --novel data/hongloumeng.txt --session <session_id> --message "Sister, are you feeling well today?"
-```
-
-Important behavior:
-
-- Requests such as `让我扮演贾宝玉和林黛玉聊天` or `我说一句，黛玉回一句` are treated as setup-only intent, not as spoken dialogue.
-- In setup-only `act` requests, zaomeng stores the controlled role in the session. Follow-up turns can continue with `--session <id> --message "<your line>"` without repeating `--character`, unless you want to switch roles.
-- Requests like `请让大家围绕这件事各说一句` are still treated as a real `observe` turn and will immediately produce replies.
-
-These files act as runtime inputs:
-
-- `PROFILE.md`: the canonical markdown character archive containing name, novel scope, values, evidence, arc, and base voice data
-- `NAVIGATION.md`: the persona entrypoint and routing map; it declares load order, which files are active, and which behavior should be sourced from which file
-- `SOUL.md`: identity anchor, soul goal, worldview, speech constraints, taboo topics, forbidden behaviors
-- `GOALS.md`: optional long-term drive, decision pressure, and strategic preference layer
-- `STYLE.md`: optional wording, cadence, signature phrases, and emotional surface layer
-- `TRAUMA.md`: optional scars, taboo triggers, and hard boundaries layer
-- `IDENTITY.md`: experience, typical lines, decision habits, emotional style
-- `AGENTS.md`: group-chat rules, silence boundaries, and runtime behavior rules after navigation is resolved
-- `MEMORY.md`: stable memory, user edits, notable interactions, relationship updates
-- `RELATIONS.md`: per-character editable relation overlay for trust, affection, appellations, conflict focus, and interaction style
-
-Runtime loading now prefers the editable persona files and merges them back into the character profile. Editing these files directly changes later replies.
-
-## Runtime Memory Writes
-
-This version also writes character constraints back during chat, not only through manual file edits:
-
-- If a user prompt contains durable guidance such as `记住`, `以后`, `不要`, `改成`, `纠正`, or `必须`, and it explicitly names a character, that guidance is appended to the target character's `MEMORY.md`
-- `/correct character|target|original|corrected|reason` still writes to `data/corrections/`, and now also writes into the target character's `MEMORY.md`
-- These memory entries are loaded again on later turns and can affect cadence, taboo boundaries, value emphasis, and behavior constraints
-
-Recommended workflow:
-
-- Use explicit durable prompts when you want long-term behavior shaping
-- Use `/correct` when you want to pin a clear anti-OOC correction
-- Edit `NAVIGATION.md` when you want to change which persona files are active or their load order
-- Edit `SOUL.md` / `MEMORY.md` directly when you want full manual control
-
-## License
-
-[MIT](LICENSE)
