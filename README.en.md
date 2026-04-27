@@ -6,27 +6,145 @@
 
 It does three things:
 
-- distills characters from a novel
-- extracts character relationships
-- lets those characters enter group chat or roleplay after distillation
+- distills characters from novels
+- extracts character relationships from novels
+- lets those characters enter group chat or roleplay in character
 
 It is not a generic chatbot.  
-It is closer to a character engine for fiction.
+It is better understood as a fiction character engine.
 
-## Read This First
+## Example 1: Act Mode
 
-The correct order is not “start chatting immediately.”  
-**Step one is always: provide the novel first, then distill the characters. Only after distillation should you enter chat or roleplay.**
+```
+User      ❯  Let me play Jia Baoyu and chat with Lin Daiyu.
+            Set the scene at Qinfang Pavilion in the Grand View Garden,
+            on a spring afternoon, with Daiyu standing by the bridge watching fish.
+
+zaomeng   ❯  (On a spring afternoon, sunlight filters through willow branches
+            and falls across the waters of Qinfang Stream.
+            Daiyu stands alone by the bridge, one hand resting lightly
+            against the rail as she watches the koi drifting below.
+            The wind lifts the edge of her skirt and a few loose strands
+            by her temple. She seems lost in thought.
+            In her hand is a fallen flower she must have picked up
+            without thinking, her fingers holding it a little too tightly.)
+
+User      ❯  Cousin Lin, in weather this warm, why are you standing here alone
+            and drifting into thought?
+            If the wind keeps up, you'll grow faint if you stay too long.
+
+zaomeng   ❯  (At the sound of his voice, she does not turn at once.
+            Her eyes remain fixed on the glittering water and the fish below.
+            After a while she answers softly.)
+            You do concern yourself with too much.
+            I am only watching fish, and the fish do not seem to mind me there.
+            That is more than can be said for lively places full of people,
+            where one more person is always in the way.
+            (Her fingers unconsciously rub at the fallen flower.
+            A few petals break loose and drift onto the water,
+            only to be pecked away by the fish.
+            Then she turns her face slightly, glancing at Baoyu from the corner of her eye,
+            her tone still cool.)
+            If anyone is likely to grow faint, it is probably you.
+            On such a fine day, why are you not off keeping Baochai company over tea and chess?
+            Yet here you are, coming to this quiet place to look for me.
+            Aren't you afraid someone will say you still have no proper sense of yourself?
+
+User      ❯  How did such a fine afternoon turn into words so full of jealousy?
+            For me, no lively place in the world is worth half the charm
+            of Qinfang Bridge when you are standing here.
+
+zaomeng   ❯  (The flower in her hand trembles.
+            Her fingers tighten slightly around it.
+            A faint flush slowly reaches the tips of her ears,
+            yet she turns her face aside so he cannot see it clearly.)
+            ...Hmph.
+            (There is a brief silence. When she speaks again,
+            her voice is a little softer than before,
+            as though the spring breeze had worn down one sharp edge.)
+            You have said such things more than once.
+            However pleasant they sound, too many repetitions make them less rare.
+            (A koi flicks its tail, splashing a few drops of water onto the back of her hand.
+            She lowers her eyes to look at it, and suddenly murmurs:)
+            "Soft the east wind beyond the peach-blossom curtain;
+            within it, the morning toilette lies still undone..."
+            (The moment the words leave her mouth she seems to realize she has betrayed herself.
+            The flush deepens. She lifts the broken flower as though to hide the corner of her mouth,
+            her gaze sliding away into the distance.)
+            ...I was only watching fish. I was not reciting poetry for your sake.
+            If you find it dull here, then go elsewhere.
+            You need not stand here and offend my eyes.
+```
+
+## Example 2: Group Chat Mode (Observe)
+
+```
+User      ❯  Put Jia Baoyu, Lin Daiyu, and Xue Baochai into group chat mode
+            (no scene specified).
+
+zaomeng   ❯  All character profiles and relationship data have been loaded.
+            Setting the scene...
+            🎭 Group chat mode started
+            📍 Scene: Hengwu Court, autumn afternoon.
+               Baochai is inside sorting colored thread.
+               Baoyu comes to borrow a book and finds Daiyu already there.
+               The three gather in Baochai's quarters.
+            ⏰ Timeline: after Chapter 42
+               (The Golden Orchid vow has passed.
+               Daiyu and Baochai appear reconciled on the surface,
+               but the undercurrent of the triangle remains.)
+
+Baoyu (stepping into Hengwu Court, delighted to see Daiyu there as well):
+
+How fortunate that both my dear sisters are here!
+I only came to borrow a book from Baochai,
+yet Lin妹妹 is here too, and that saves me another walk.
+The weather is so fine today. Why don't we all sit together and talk for a while?
+
+Baochai (setting down her needlework with a faint smile):
+
+You have arrived at just the right time.
+I do happen to have a newly acquired copy of Guangyun here.
+If you want to borrow it, take it.
+Only do not leave it lying in Yihong Courtyard to gather dust again,
+as you did last time. That would be a waste of the book.
+As for Cousin Lin, she came to see me.
+Sit down. I shall have Ying'er bring tea.
+
+Daiyu (leaning sideways against the couch, her eyes passing over Baoyu as she speaks lightly):
+
+Then I came at the wrong time.
+Had I known you were here, I would not have come,
+lest someone say again that I have come only to disturb your private talk.
+
+(more dialogue omitted...)
+
+zaomeng   > 🌸 Group chat paused
+
+            That was the first round of group chat, generated from the three characters'
+            distilled personalities, speech styles, and relationship dynamics.
+            You can now:
+
+            continue the conversation
+            cut into one character's line
+            change the scene
+            or end the chat
+```
+
+## How To Use It
+
+The correct order is not to jump straight into chat.  
+**You always start by providing the novel first, then distilling the characters. Only after distillation should you enter group chat or roleplay.**
 
 The most common user flow is:
 
-1. attach a novel file, or provide the novel file path
-2. say which characters you want distilled
-3. after distillation finishes, enter group chat or roleplay
+1. attach the novel file, or provide the file path
+2. describe which characters you want distilled
+3. after distillation finishes, enter roleplay or group chat
 
 ## One Complete Example
 
-### Step 1: provide the novel, then ask for distillation
+### Step 1: provide the novel, then say who you want distilled
 
 For example, after providing *Dream of the Red Chamber*, you say:
 
@@ -34,9 +152,9 @@ For example, after providing *Dream of the Red Chamber*, you say:
 Distill Lin Daiyu and Jia Baoyu for me
 ```
 
-The system will first process the novel and build character profiles plus relationship data.
+The system will process the novel and generate character profiles plus relationship data for them.
 
-### Step 2: only after distillation, enter chat
+### Step 2: after distillation, enter chat
 
 Then you say:
 
@@ -44,7 +162,7 @@ Then you say:
 Let me play Jia Baoyu and chat with Lin Daiyu
 ```
 
-Only now does the system enter the flow where you play Baoyu and Daiyu replies.
+Now the system enters the flow where you play Baoyu and Daiyu replies.
 
 Then you continue with:
 
@@ -56,13 +174,13 @@ The system treats that as Baoyu's actual line and lets Daiyu answer.
 
 ### Step 3: multi-character chat also comes after distillation
 
-For example, after providing *Romance of the Three Kingdoms* and distilling Liu Bei, Zhang Fei, and Guan Yu, you say:
+For example, after providing *Romance of the Three Kingdoms* and distilling Liu Bei, Zhang Fei, and Guan Yu, you can say:
 
 ```text
 Enter Liu Bei, Zhang Fei, Guan Yu group chat mode
 ```
 
-Then you continue with:
+Then continue with:
 
 ```text
 Liu Bei: Brothers, now that the fighting has briefly eased, this is a rare moment of calm.
@@ -82,18 +200,10 @@ Distill Lin Daiyu and Jia Baoyu for me
 Extract character personas for Liu Bei, Zhang Fei, and Guan Yu from this novel
 ```
 
-```text
-Distill Baoyu and Daiyu from Dream of the Red Chamber
-```
-
 ### Enter roleplay after distillation
 
 ```text
 Let me play Jia Baoyu and chat with Lin Daiyu
-```
-
-```text
-I'll play Liu Bei. Let Guan Yu and Zhang Fei reply to me
 ```
 
 ### Enter group chat after distillation
@@ -102,23 +212,15 @@ I'll play Liu Bei. Let Guan Yu and Zhang Fei reply to me
 Enter Liu Bei, Zhang Fei, Guan Yu group chat mode
 ```
 
-```text
-Let Baoyu, Daiyu, and Baochai discuss this together
-```
-
 ### Make everyone speak immediately
 
 ```text
 Let everyone say one line about the alliance with Sun Quan
 ```
 
-```text
-Scene: Daiyu arrives at the Jia household. Let the relevant characters begin naturally
-```
-
 ## What It Can Do
 
-### 1. Character distillation
+### 1. Character Distillation
 
 Extract major characters from `.txt` or `.epub` novels and build profiles including:
 
@@ -133,7 +235,7 @@ Extract major characters from `.txt` or `.epub` novels and build profiles includ
 - `taboo_topics`
 - `forbidden_behaviors`
 
-### 2. Relationship extraction
+### 2. Relationship Extraction
 
 Build a relationship graph from the novel. Current core fields include:
 
@@ -143,7 +245,7 @@ Build a relationship graph from the novel. Current core fields include:
 - `conflict_point`
 - `typical_interaction`
 
-### 3. Character chat
+### 3. Character Chat
 
 Two chat styles are supported:
 
@@ -152,12 +254,12 @@ Two chat styles are supported:
 - `act`
   You control one character directly while others reply in character
 
-### 4. Correction memory
+### 4. Correction Memory
 
 If a line is clearly out of character, you can save a correction.  
 Later conversations will try to avoid the same kind of mistake.
 
-### 5. Markdown persona bundle
+### 5. Markdown Persona Bundle
 
 Character storage is now markdown-first rather than legacy JSON-first.
 
@@ -196,15 +298,8 @@ This creates:
 
 ### 3. After distillation, start chatting
 
-Recommended natural-language flow:
-
 ```bash
 python -m src.core.main chat --novel data/hongloumeng.txt --mode auto --message "让我扮演贾宝玉和林黛玉聊天"
-```
-
-Then continue with:
-
-```bash
 python -m src.core.main chat --novel data/hongloumeng.txt --session <session_id> --message "妹妹今日可大安了？"
 ```
 
