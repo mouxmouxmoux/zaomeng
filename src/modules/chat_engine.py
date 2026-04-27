@@ -505,6 +505,9 @@ class ChatEngine:
             "speech_habits": {
                 "cadence": parsed.get("cadence", ""),
                 "signature_phrases": self._split_persona_value(parsed.get("signature_phrases", "")),
+                "sentence_openers": self._split_persona_value(parsed.get("sentence_openers", "")),
+                "connective_tokens": self._split_persona_value(parsed.get("connective_tokens", "")),
+                "sentence_endings": self._split_persona_value(parsed.get("sentence_endings", "")),
                 "forbidden_fillers": self._split_persona_value(parsed.get("forbidden_fillers", "")),
             },
             "emotion_profile": {
@@ -714,6 +717,9 @@ class ChatEngine:
             "typical_lines",
             "decision_rules",
             "signature_phrases",
+            "sentence_openers",
+            "connective_tokens",
+            "sentence_endings",
             "forbidden_fillers",
             "taboo_topics",
             "forbidden_behaviors",
@@ -725,6 +731,9 @@ class ChatEngine:
         dict_targets = {
             "cadence": ("speech_habits", "cadence"),
             "signature_phrases": ("speech_habits", "signature_phrases"),
+            "sentence_openers": ("speech_habits", "sentence_openers"),
+            "connective_tokens": ("speech_habits", "connective_tokens"),
+            "sentence_endings": ("speech_habits", "sentence_endings"),
             "forbidden_fillers": ("speech_habits", "forbidden_fillers"),
             "anger_style": ("emotion_profile", "anger_style"),
             "joy_style": ("emotion_profile", "joy_style"),

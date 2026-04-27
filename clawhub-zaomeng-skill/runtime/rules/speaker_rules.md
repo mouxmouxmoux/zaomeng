@@ -24,6 +24,12 @@ trait_priority_map:
   诙谐: 自由
   圆滑: 自由
 signature_fragments: [依我看, 不可, 不必, 兄弟, 百姓, 大义, 且慢]
+opener_patterns: [我自来, 我素来, 我看, 这倒是, 那里的话, 只不过, 只是, 不过, 既然, 若是, 原是, 原不应, 总要, 何必, 不必, 罢了, 未为不可, 亦未为不可, 只管]
+connective_patterns: [只是, 不过, 既然, 若是, 原是, 原不应, 总要, 可知, 倒要, 倒也, 只管, 便, 却, 又, 还, 原来]
+ending_patterns: [罢了, 就是了, 未为不可, 也不迟, 何必, 不必, 而已, 便是, 也就罢了]
+fragment_stopwords: [不可, 可以, 只是, 不过, 如今, 今日, 明日, 知道, 一个, 这个, 那个, 这样, 那里, 这里, 不是, 没有, 不得, 你们, 我们, 他们]
+preferred_leading_chars: [我, 这, 那, 只, 便, 却, 还, 原, 若, 既, 可, 未, 何, 岂, 偏, 倒, 但]
+preferred_trailing_chars: [了, 罢, 可, 必, 迟, 也]
 durable_guidance_tokens: [记住, 设定, 人设, 以后, 别再, 不要再, 改成, 纠正, 必须, 不要, 应该]
 single_chat_markers: [单聊, 单独聊, 单独说话]
 ---
@@ -31,4 +37,3 @@ single_chat_markers: [单聊, 单独聊, 单独说话]
 # SPEAKER RULES
 
 Speaker and chat routing tokens live here instead of Python code.
-

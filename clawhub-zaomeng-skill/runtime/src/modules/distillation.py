@@ -175,6 +175,14 @@ class NovelDistiller:
         speaker_rules = self.rulebook.section("speaker")
         self.generic_fillers = tuple(speaker_rules.get("generic_fillers", []))
         self.signature_fragments = tuple(speaker_rules.get("signature_fragments", []))
+        self.opener_patterns = tuple(speaker_rules.get("opener_patterns", []))
+        self.connective_patterns = tuple(speaker_rules.get("connective_patterns", []))
+        self.ending_patterns = tuple(speaker_rules.get("ending_patterns", []))
+        self.fragment_stopwords = {
+            str(item).strip() for item in speaker_rules.get("fragment_stopwords", []) if str(item).strip()
+        }
+        self.preferred_leading_chars = tuple(speaker_rules.get("preferred_leading_chars", []))
+        self.preferred_trailing_chars = tuple(speaker_rules.get("preferred_trailing_chars", []))
         self.style_templates = dict(self.rulebook.get("distillation", "style_templates", {}))
         self.taboo_topics_by_value = dict(self.rulebook.get("distillation", "taboo_topics_by_value", {}))
         self.forbidden_behaviors_by_value = dict(
@@ -701,22 +709,36 @@ class NovelDistiller:
 
     def _infer_speech_habits(self, dialogues: List[str], speech_style: str) -> Dict[str, Any]:
         cadence = "medium"
-        if "句式偏短" in speech_style or "直白" in speech_style:
-            cadence = "short"
-        elif "句式较长" in speech_style or "铺陈" in speech_style:
-            cadence = "long"
+        if dialogues:
+            window = dialogues[:8]
+            avg_len = sum(len(item) for item in window) / max(1, len(window))
+            questionish = sum(1 for item in window if any(token in item for token in ("？", "?", "何", "怎", "吗")))
+            exclaimish = sum(1 for item in window if any(token in item for token in ("！", "!", "快", "休", "莫")))
+            if avg_len <= 11 or questionish >= max(2, len(window) // 2):
+                cadence = "short"
+            elif avg_len >= 24 and exclaimish <= max(1, len(window) // 4):
+                cadence = "long"
+        if cadence == "medium":
+            if "句式偏短" in speech_style or "直白" in speech_style:
+                cadence = "short"
+            elif "句式较长" in speech_style or "铺陈" in speech_style:
+                cadence = "long"
 
         signature_phrases: List[str] = []
         for line in dialogues[:6]:
             for fragment in self.signature_fragments:
                 if fragment in line and fragment not in signature_phrases:
                     signature_phrases.append(fragment)
-        if not signature_phrases:
-            signature_phrases = self._extract_signature_phrases(dialogues)
+        for fragment in self._extract_signature_phrases(dialogues):
+            if fragment not in signature_phrases:
+                signature_phrases.append(fragment)
 
         return {
             "cadence": cadence,
             "signature_phrases": signature_phrases[:4],
+            "sentence_openers": self._extract_dialogue_markers(dialogues, self.opener_patterns, position="start"),
+            "connective_tokens": self._extract_dialogue_markers(dialogues, self.connective_patterns, position="any"),
+            "sentence_endings": self._extract_dialogue_markers(dialogues, self.ending_patterns, position="end"),
             "forbidden_fillers": list(self.generic_fillers),
         }
 
@@ -892,6 +914,9 @@ class NovelDistiller:
             f"- forbidden_behaviors: {self._join_items(profile.get('forbidden_behaviors', []))}\n"
             f"- cadence: {speech_habits.get('cadence', '')}\n"
             f"- signature_phrases: {self._join_items(speech_habits.get('signature_phrases', []))}\n"
+            f"- sentence_openers: {self._join_items(speech_habits.get('sentence_openers', []))}\n"
+            f"- connective_tokens: {self._join_items(speech_habits.get('connective_tokens', []))}\n"
+            f"- sentence_endings: {self._join_items(speech_habits.get('sentence_endings', []))}\n"
             f"- forbidden_fillers: {self._join_items(speech_habits.get('forbidden_fillers', []))}\n"
             f"- anger_style: {emotion.get('anger_style', '')}\n"
             f"- joy_style: {emotion.get('joy_style', '')}\n"
@@ -937,6 +962,9 @@ class NovelDistiller:
             f"- typical_lines: {self._join_items(profile.get('typical_lines', []))}\n"
             f"- cadence: {speech_habits.get('cadence', '')}\n"
             f"- signature_phrases: {self._join_items(speech_habits.get('signature_phrases', []))}\n"
+            f"- sentence_openers: {self._join_items(speech_habits.get('sentence_openers', []))}\n"
+            f"- connective_tokens: {self._join_items(speech_habits.get('connective_tokens', []))}\n"
+            f"- sentence_endings: {self._join_items(speech_habits.get('sentence_endings', []))}\n"
             f"- forbidden_fillers: {self._join_items(speech_habits.get('forbidden_fillers', []))}\n"
         )
 
@@ -1121,15 +1149,145 @@ class NovelDistiller:
         return ordered
 
     def _extract_signature_phrases(self, dialogues: List[str]) -> List[str]:
-        phrases: List[str] = []
-        for line in dialogues[:6]:
-            parts = [part.strip("，。！？；：、 ") for part in re.split(r"[，。！？；：]", line) if part.strip()]
-            for part in parts:
-                if 2 <= len(part) <= 8 and part not in phrases:
-                    phrases.append(part)
-            if len(phrases) >= 4:
-                break
-        return phrases[:4]
+        scored: Dict[str, int] = {}
+        for line in dialogues[:8]:
+            parts = [part.strip("，。！？；：、\"' ") for part in re.split(r"[，。！？；：、]", line) if part.strip()]
+            for idx, part in enumerate(parts):
+                if not self._looks_like_signature_fragment(part):
+                    continue
+                score = 4 if idx == 0 else 2
+                score += max(0, 8 - abs(len(part) - 5))
+                if any(token in part for token in ("我", "这", "那", "只", "再", "罢", "未", "何", "可", "倒")):
+                    score += 2
+                if part.endswith(("罢了", "就是了", "未为不可", "何必", "不必", "也不迟")):
+                    score += 3
+                scored[part] = max(scored.get(part, 0), score)
+
+        ordered = sorted(scored.items(), key=lambda item: (item[1], -len(item[0]), item[0]), reverse=True)
+        return [text for text, _ in ordered[:4]]
+
+    def _extract_dialogue_markers(
+        self,
+        dialogues: List[str],
+        configured_patterns: tuple[str, ...],
+        *,
+        position: str,
+    ) -> List[str]:
+        scored: Dict[str, int] = {}
+        patterns = [str(item).strip() for item in configured_patterns if str(item).strip()]
+
+        for line in dialogues[:8]:
+            parts = [part.strip("，。！？；：、\"' ") for part in re.split(r"[，。！？；：、]", line) if part.strip()]
+            if not parts:
+                continue
+            clauses = []
+            if position == "start":
+                clauses = [(parts[0], True, False)]
+            elif position == "end":
+                clauses = [(parts[-1], False, True)]
+            else:
+                clauses = [(part, idx == 0, idx == len(parts) - 1) for idx, part in enumerate(parts)]
+
+            for clause, is_opener, is_closer in clauses:
+                matched_configured = False
+                for marker in patterns:
+                    if not marker:
+                        continue
+                    if position == "start" and clause.startswith(marker):
+                        scored[marker] = scored.get(marker, 0) + 6 + len(marker)
+                        matched_configured = True
+                    elif position == "end" and clause.endswith(marker):
+                        scored[marker] = scored.get(marker, 0) + 6 + len(marker)
+                        matched_configured = True
+                    elif position == "any" and marker in clause:
+                        scored[marker] = scored.get(marker, 0) + 2 + clause.count(marker)
+
+                if position == "any" or matched_configured:
+                    continue
+                fallback = self._fallback_fragment_candidate(clause, position=position)
+                if fallback:
+                    score = self._fallback_fragment_score(fallback, is_opener=is_opener, is_closer=is_closer)
+                    scored[fallback] = max(scored.get(fallback, 0), score)
+
+        ordered = sorted(scored.items(), key=lambda item: (item[1], -len(item[0]), item[0]), reverse=True)
+        return [text for text, _ in ordered[:4]]
+
+    def _fallback_fragment_candidate(self, clause: str, *, position: str) -> str:
+        text = str(clause or "").strip()
+        if len(text) < 2:
+            return ""
+        lengths = (4, 3, 2)
+        for size in lengths:
+            if len(text) < size:
+                continue
+            candidate = text[:size] if position != "end" else text[-size:]
+            if self._looks_like_dialogue_marker(candidate) and self._fallback_fragment_allowed(candidate, position=position):
+                return candidate
+        return ""
+
+    def _looks_like_dialogue_marker(self, fragment: str) -> bool:
+        text = str(fragment or "").strip()
+        if len(text) < 2 or len(text) > 8:
+            return False
+        if text in self.fragment_stopwords:
+            return False
+        if any(token in text for token in ("《", "》", "<", ">", "<<", ">>")):
+            return False
+        if any(ch.isdigit() for ch in text):
+            return False
+        return True
+
+    def _fallback_fragment_score(self, fragment: str, *, is_opener: bool, is_closer: bool) -> int:
+        score = max(1, 8 - abs(len(fragment) - 4))
+        if is_opener:
+            score += 2
+        if is_closer:
+            score += 1
+        if fragment[:1] in self.preferred_leading_chars:
+            score += 3
+        if fragment[-1:] in self.preferred_trailing_chars:
+            score += 2
+        return score
+
+    def _fallback_fragment_allowed(self, fragment: str, *, position: str) -> bool:
+        if position == "start":
+            return fragment[:1] in self.preferred_leading_chars and (len(fragment) <= 3 or fragment[-1:] in self.preferred_trailing_chars)
+        if position == "end":
+            return fragment[-1:] in self.preferred_trailing_chars
+        return False
+
+    @staticmethod
+    def _looks_like_signature_fragment(fragment: str) -> bool:
+        text = str(fragment or "").strip()
+        if len(text) < 2 or len(text) > 12:
+            return False
+        if any(token in text for token in ("《", "》", "<", ">", "“", "”", "<<", ">>")):
+            return False
+        if any(ch.isdigit() for ch in text):
+            return False
+        too_generic = {
+            "不可",
+            "可以",
+            "只是",
+            "不过",
+            "如今",
+            "今日",
+            "明日",
+            "知道",
+            "一个",
+            "这个",
+            "那个",
+            "这样",
+            "那里",
+            "这里",
+            "不是",
+            "没有",
+            "不得",
+            "你们",
+            "我们",
+            "他们",
+        }
+        return text not in too_generic
 
     @staticmethod
     def _top_dimensions(values: Dict[str, int], count: int) -> List[str]:

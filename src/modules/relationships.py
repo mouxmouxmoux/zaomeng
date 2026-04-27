@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 from src.core.config import Config
 from src.core.contracts import CostEstimator, PathProviderLike, RuleProvider
 from src.modules.distillation import NovelDistiller
-from src.utils.file_utils import save_markdown_data
+from src.utils.file_utils import novel_id_from_input, save_markdown_data
 from src.utils.text_parser import load_novel_text, split_sentences
 from src.utils.token_counter import TokenCounter
 
@@ -80,7 +80,7 @@ class RelationshipExtractor:
         text = load_novel_text(novel_path)
         chunks = self._chunk_text(text)
         self._last_chunk_count = len(chunks)
-        novel_id = Path(novel_path).stem
+        novel_id = novel_id_from_input(novel_path)
 
         scoped_characters = [item.strip() for item in characters or [] if item.strip()] or self._load_existing_character_names(novel_id)
         if not scoped_characters:
@@ -128,14 +128,27 @@ class RelationshipExtractor:
         final_relations: Dict[str, Dict[str, Any]] = {}
         for key in sorted(buckets.keys()):
             bucket = buckets[key]
-            trust = self._avg_int(bucket["trust_samples"], default=5)
-            affection = self._avg_int(bucket["affection_samples"], default=5)
+            interaction_bonus = min(3, len(bucket["interactions"]) // 6)
+            appellation_count = sum(len(terms) for terms in bucket["appellations"].values())
+            appellation_bonus = min(2, appellation_count)
+            conflict_penalty = min(2, len(bucket["conflict_points"]) // 3)
+            trust = max(0, min(10, self._avg_int(bucket["trust_samples"], default=5) + min(1, interaction_bonus) + appellation_bonus))
+            affection = max(
+                0,
+                min(
+                    10,
+                    self._avg_int(bucket["affection_samples"], default=5)
+                    + interaction_bonus
+                    + appellation_bonus
+                    - conflict_penalty,
+                ),
+            )
             final_relations[key] = {
                 "trust": trust,
                 "affection": affection,
                 "power_gap": self._avg_int(bucket["power_gap_samples"], default=0),
-                "hostility": max(0, 5 - affection),
-                "ambiguity": 3 if affection == 5 and trust == 5 else max(0, 7 - abs(affection - trust)),
+                "hostility": min(10, max(0, 5 - affection) + conflict_penalty),
+                "ambiguity": max(0, 7 - abs(affection - trust) - min(2, interaction_bonus)),
                 "conflict_point": self._mode_text(bucket["conflict_points"], default="立场差异"),
                 "typical_interaction": self._mode_text(bucket["interactions"], default="试探 -> 回应 -> 暂时收束"),
                 "appellations": {

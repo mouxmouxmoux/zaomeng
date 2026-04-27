@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from src.core.config import Config
 from src.utils.file_utils import ensure_dir, safe_filename

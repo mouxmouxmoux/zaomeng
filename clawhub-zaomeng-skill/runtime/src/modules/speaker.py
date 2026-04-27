@@ -37,6 +37,14 @@ class Speaker:
         self.care_tokens = tuple(speaker_rules.get("care_tokens", []))
         self.generic_fillers = tuple(speaker_rules.get("generic_fillers", []))
         self.signature_fragments = tuple(speaker_rules.get("signature_fragments", []))
+        self.opener_patterns = tuple(speaker_rules.get("opener_patterns", []))
+        self.connective_patterns = tuple(speaker_rules.get("connective_patterns", []))
+        self.ending_patterns = tuple(speaker_rules.get("ending_patterns", []))
+        self.fragment_stopwords = {
+            str(item).strip() for item in speaker_rules.get("fragment_stopwords", []) if str(item).strip()
+        }
+        self.preferred_leading_chars = tuple(speaker_rules.get("preferred_leading_chars", []))
+        self.preferred_trailing_chars = tuple(speaker_rules.get("preferred_trailing_chars", []))
         self.durable_guidance_tokens = tuple(speaker_rules.get("durable_guidance_tokens", []))
         self.single_chat_markers = tuple(speaker_rules.get("single_chat_markers", []))
         self.priority_order = tuple(
@@ -128,6 +136,15 @@ class Speaker:
         signature_phrases = [str(item).strip() for item in speech_habits.get("signature_phrases", []) if str(item).strip()]
         if not signature_phrases:
             signature_phrases = self._extract_signature_phrases(typical_lines)
+        sentence_openers = [
+            str(item).strip() for item in speech_habits.get("sentence_openers", []) if str(item).strip()
+        ] or self._extract_dialogue_markers(typical_lines, self.opener_patterns, position="start")
+        connective_tokens = [
+            str(item).strip() for item in speech_habits.get("connective_tokens", []) if str(item).strip()
+        ] or self._extract_dialogue_markers(typical_lines, self.connective_patterns, position="any")
+        sentence_endings = [
+            str(item).strip() for item in speech_habits.get("sentence_endings", []) if str(item).strip()
+        ] or self._extract_dialogue_markers(typical_lines, self.ending_patterns, position="end")
         forbidden_fillers = [
             str(item).strip()
             for item in speech_habits.get("forbidden_fillers", [])
@@ -175,6 +192,9 @@ class Speaker:
             "speech_habits": {
                 "cadence": cadence,
                 "signature_phrases": signature_phrases[:4],
+                "sentence_openers": sentence_openers[:4],
+                "connective_tokens": connective_tokens[:4],
+                "sentence_endings": sentence_endings[:4],
                 "forbidden_fillers": forbidden_fillers,
             },
             "emotion_profile": emotion_profile,
@@ -251,12 +271,22 @@ class Speaker:
         hostility = self._safe_int(relation_state.get("hostility", max(0, 5 - affection)), default=max(0, 5 - affection))
         ambiguity = self._safe_int(relation_state.get("ambiguity", 3), default=3)
         address = f"{target_name}，" if target_name else ""
+        opener_candidates = [
+            self._normalize_marker_candidate(str(item).strip(), self.opener_patterns, position="start")
+            for item in voice.get("speech_habits", {}).get("sentence_openers", [])
+            if self._is_usable_sentence_opener(str(item).strip())
+        ]
+        surface_prefix = self._stable_pick(name, "sentence-opener", opener_candidates)
+        prefix_text = f"{surface_prefix}，" if surface_prefix else ""
 
-        signature = self._stable_pick(
-            name,
-            "signature",
-            voice["speech_habits"].get("signature_phrases", []) or list(self.signature_fragments) or ["依我看"],
-        )
+        signature_candidates = [
+            self._normalize_marker_candidate(str(item).strip(), self.opener_patterns, position="start")
+            for item in voice["speech_habits"].get("signature_phrases", [])
+            if self._is_usable_signature_fragment(str(item).strip())
+        ] or list(self.signature_fragments) or ["依我看"]
+        signature = self._stable_pick(name, "signature", signature_candidates)
+        if surface_prefix:
+            signature = ""
         signature_text = f"{signature}，" if signature else ""
 
         if hostility >= 7:
@@ -269,7 +299,7 @@ class Speaker:
                     "你既说到这里，我就回你，只是不会顺着气头往下说。",
                 ],
             )
-            return f"{address}{body}"
+            return f"{address}{prefix_text}{body}"
 
         if has_correction:
             body = self._stable_pick(
@@ -281,7 +311,7 @@ class Speaker:
                     "既问到我这里，我便照一贯的心性回你。",
                 ],
             )
-            return f"{address}{body}"
+            return f"{address}{prefix_text}{body}"
 
         if affection >= 8 and trust >= 7:
             body = self._stable_pick(
@@ -293,7 +323,7 @@ class Speaker:
                     "你肯问到这一步，我就认真回你。",
                 ],
             )
-            return f"{address}{body}"
+            return f"{address}{prefix_text}{body}"
 
         if ambiguity >= 7:
             body = self._stable_pick(
@@ -305,7 +335,7 @@ class Speaker:
                     "这一步我先把分寸留着，再慢慢讲清。",
                 ],
             )
-            return f"{address}{body}"
+            return f"{address}{prefix_text}{body}"
 
         if voice["direct"]:
             body = self._stable_pick(
@@ -317,7 +347,7 @@ class Speaker:
                     "既轮到我开口，我就把意思摆明。",
                 ],
             )
-            return f"{address}{signature_text}{body}"
+            return f"{address}{prefix_text}{signature_text}{body}"
 
         if voice["restrained"]:
             body = self._stable_pick(
@@ -329,7 +359,7 @@ class Speaker:
                     "这话不宜仓促作答，总要先把层次分明。",
                 ],
             )
-            return f"{address}{body}"
+            return f"{address}{prefix_text}{body}"
 
         body = self._stable_pick(
             name,
@@ -340,7 +370,7 @@ class Speaker:
                 "话到这里，我就把自己的分寸摆出来。",
             ],
         )
-        return f"{address}{signature_text}{body}"
+        return f"{address}{prefix_text}{signature_text}{body}"
 
     def _taboo_line(self, context: str, voice: Dict[str, Any]) -> str:
         for topic in voice["taboo_topics"]:
@@ -376,6 +406,8 @@ class Speaker:
                 return f"{rule}，真到要紧处再决定是退是进。"
             if topic == "care":
                 return f"{rule}，但人心冷暖也不能不算。"
+            if topic == "general":
+                return rule
 
         if topic == "judgment":
             return worldview or "先把轻重和后果分清，再谈定夺。"
@@ -405,7 +437,9 @@ class Speaker:
             return f"至于你我之间，这话眼下还隔着一层，不宜说得太近。"
         if affection >= 8 and trust >= 7:
             return f"若是同你说，我自然会比对旁人多留一分真心。"
-        if conflict_point:
+        if affection >= 7 and trust >= 5:
+            return ""
+        if conflict_point and (hostility >= 4 or affection <= 4 or trust <= 4):
             return f"只是你我之间还横着{conflict_point}，我不会装作看不见。"
         if trust <= 3:
             return f"不过话归话，我还得先看你这一句背后到底想落到哪里。"
@@ -458,13 +492,33 @@ class Speaker:
         else:
             cleaned = cleaned[:4]
 
-        reply = " ".join(cleaned)
+        reply = cleaned[0]
+        connector_candidates = [
+            self._normalize_marker_candidate(str(item).strip(), self.connective_patterns, position="any")
+            for item in voice.get("speech_habits", {}).get("connective_tokens", [])
+            if self._looks_like_dialogue_marker(str(item).strip())
+        ]
+        connector = self._stable_pick(voice.get("name", "角色"), "connector", connector_candidates)
+        for index, segment in enumerate(cleaned[1:], start=1):
+            if index == 1 and connector and connector not in reply and not segment.startswith(connector):
+                reply = f"{reply} {connector}，{segment}"
+            else:
+                reply = f"{reply} {segment}"
         for filler in voice.get("speech_habits", {}).get("forbidden_fillers", []):
             reply = reply.replace(filler, "")
         reply = re.sub(r"\s+", " ", reply).strip()
         reply = reply.replace(" ，", "，").replace(" 。", "。")
         if reply and reply[-1] not in "。！？!?":
-            reply += "。"
+            ending_candidates = [
+                self._normalize_marker_candidate(str(item).strip(), self.ending_patterns, position="end")
+                for item in voice.get("speech_habits", {}).get("sentence_endings", [])
+                if self._looks_like_dialogue_marker(str(item).strip())
+            ]
+            ending = self._stable_pick(voice.get("name", "角色"), "ending", ending_candidates)
+            if ending and not reply.endswith(ending):
+                reply += ending
+            if reply and reply[-1] not in "。！？!?":
+                reply += "。"
         return reply
 
     def _apply_user_edits(
@@ -623,6 +677,126 @@ class Speaker:
                 if len(phrases) >= 4:
                     return phrases[:4]
         return phrases[:4]
+
+    def _extract_dialogue_markers(
+        self,
+        typical_lines: List[str],
+        configured_patterns: tuple[str, ...],
+        *,
+        position: str,
+    ) -> List[str]:
+        scored: Dict[str, int] = {}
+        patterns = [str(item).strip() for item in configured_patterns if str(item).strip()]
+
+        for line in typical_lines[:8]:
+            parts = [part.strip("，。！？；：、“”\"' ") for part in re.split(r"[，。！？；：]", line) if part.strip()]
+            if not parts:
+                continue
+            if position == "start":
+                clauses = [(parts[0], True, False)]
+            elif position == "end":
+                clauses = [(parts[-1], False, True)]
+            else:
+                clauses = [(part, idx == 0, idx == len(parts) - 1) for idx, part in enumerate(parts)]
+
+            for clause, is_opener, is_closer in clauses:
+                matched_configured = False
+                for marker in patterns:
+                    if position == "start" and clause.startswith(marker):
+                        scored[marker] = scored.get(marker, 0) + 6 + len(marker)
+                        matched_configured = True
+                    elif position == "end" and clause.endswith(marker):
+                        scored[marker] = scored.get(marker, 0) + 6 + len(marker)
+                        matched_configured = True
+                    elif position == "any" and marker in clause:
+                        scored[marker] = scored.get(marker, 0) + 2 + clause.count(marker)
+
+                if position == "any" or matched_configured:
+                    continue
+                fallback = self._fallback_fragment_candidate(clause, position=position)
+                if fallback:
+                    score = self._fallback_fragment_score(fallback, is_opener=is_opener, is_closer=is_closer)
+                    scored[fallback] = max(scored.get(fallback, 0), score)
+
+        ranked = sorted(scored.items(), key=lambda item: (item[1], -len(item[0]), item[0]), reverse=True)
+        return [text for text, _ in ranked[:4]]
+
+    def _fallback_fragment_candidate(self, clause: str, *, position: str) -> str:
+        text = str(clause or "").strip()
+        if len(text) < 2:
+            return ""
+        for size in (4, 3, 2):
+            if len(text) < size:
+                continue
+            candidate = text[:size] if position != "end" else text[-size:]
+            if self._looks_like_dialogue_marker(candidate) and self._fallback_fragment_allowed(candidate, position=position):
+                return candidate
+        return ""
+
+    def _looks_like_dialogue_marker(self, fragment: str) -> bool:
+        text = str(fragment or "").strip()
+        if len(text) < 2 or len(text) > 8:
+            return False
+        if text in self.fragment_stopwords:
+            return False
+        if any(token in text for token in ("《", "》", "<", ">", "<<", ">>")):
+            return False
+        if any(ch.isdigit() for ch in text):
+            return False
+        return True
+
+    def _normalize_marker_candidate(self, fragment: str, patterns: tuple[str, ...], *, position: str) -> str:
+        text = str(fragment or "").strip()
+        for pattern in patterns:
+            marker = str(pattern).strip()
+            if not marker:
+                continue
+            if position == "start" and text.startswith(marker):
+                return marker
+            if position == "end" and text.endswith(marker):
+                return marker
+            if position == "any" and marker in text:
+                return marker
+        return text
+
+    def _is_usable_sentence_opener(self, fragment: str) -> bool:
+        text = str(fragment or "").strip()
+        if not self._looks_like_dialogue_marker(text):
+            return False
+        if any(text.startswith(pattern) for pattern in self.opener_patterns):
+            return True
+        if text[-1:] in self.preferred_trailing_chars:
+            return True
+        return len(text) <= 3 and text[:1] in self.preferred_leading_chars
+
+    def _is_usable_signature_fragment(self, fragment: str) -> bool:
+        text = str(fragment or "").strip()
+        if not self._looks_like_dialogue_marker(text):
+            return False
+        if text in self.signature_fragments:
+            return True
+        if any(text.startswith(pattern) for pattern in self.opener_patterns):
+            return True
+        return text[-1:] in self.preferred_trailing_chars and len(text) <= 6
+
+    def _fallback_fragment_score(self, fragment: str, *, is_opener: bool, is_closer: bool) -> int:
+        score = max(1, 8 - abs(len(fragment) - 4))
+        if is_opener:
+            score += 2
+        if is_closer:
+            score += 1
+        if fragment[:1] in self.preferred_leading_chars:
+            score += 3
+        if fragment[-1:] in self.preferred_trailing_chars:
+            score += 2
+        return score
+
+    def _fallback_fragment_allowed(self, fragment: str, *, position: str) -> bool:
+        if position == "start":
+            return fragment[:1] in self.preferred_leading_chars and (len(fragment) <= 3 or fragment[-1:] in self.preferred_trailing_chars)
+        if position == "end":
+            return fragment[-1:] in self.preferred_trailing_chars
+        return False
 
     @staticmethod
     def _trim_note_prefix(note: str) -> str:
