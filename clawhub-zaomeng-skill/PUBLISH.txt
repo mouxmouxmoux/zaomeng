@@ -4,21 +4,24 @@ Suggested metadata:
 - Type: OpenClaw Skill
 - Name: zaomeng-skill
 - Display Name: 造梦技能
-- Version: 2.1.1
+- Version: 3.0.0
 - Category: Writing / Roleplay / Character Simulation
 
 Risk posture:
-- Self-contained skill-definition package
-- Runtime may bootstrap the local zaomeng repository when absent, but it is pinned to commit `649f7466738f99d60c454e167835462215cffc7d`
+- Self-contained skill package with embedded minimal runtime
+- No runtime clone or external Git bootstrap required
+- Still depends on local Python execution plus Python package trust (`PyYAML`, optional `tiktoken`, optional `ebooklib`)
 - Explicit safety policy included
 
 Pre-publish checks:
 1. SKILL.md frontmatter is valid.
-2. Output schema and safety files are present.
-3. Examples are coherent with schema.
-4. No credentials or secrets in bundle.
+2. Embedded runtime entrypoint starts successfully.
+3. Output schema and safety files are present.
+4. Examples are coherent with schema.
+5. No credentials or secrets in bundle.
 
 Release note:
+- 3.0.0: Embedded a minimal local zaomeng runtime directly inside the skill package, removed runtime Git bootstrap from the primary execution path, and switched skill guidance to the packaged `runtime/zaomeng_cli.py` entrypoint.
 - 2.1.1: Fixed the auto-bootstrap guidance to pin the external zaomeng repository to commit `649f7466738f99d60c454e167835462215cffc7d`, reducing supply-chain drift during runtime bootstrap.
 - 2.1.0: Switched skill guidance to the A+ bootstrap flow so agents first reuse a local zaomeng repo when present and otherwise clone the repository before executing the real CLI workflow.
 - 2.0.0: Switched the persona workflow to markdown-first storage, introduced navigation/persona bundles plus runtime memory writes, and added natural-language chat intent routing for distill-before-chat and act/observe session setup.
