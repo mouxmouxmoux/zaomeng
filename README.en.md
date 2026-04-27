@@ -2,91 +2,125 @@
 
 [中文](README.md) | [English](README.en.md)
 
-`zaomeng` is a local novel-character toolkit.  
-You can use it to distill characters from fiction, extract relationships, and run constrained in-character dialogue.
+`zaomeng` is a local novel-character toolkit.
+
+It does three things:
+
+- distills characters from a novel
+- extracts character relationships
+- lets those characters enter group chat or roleplay after distillation
 
 It is not a generic chatbot.  
-It is closer to a character engine: the goal is not casual chatting, but making characters sound like themselves.
+It is closer to a character engine for fiction.
 
-## What You Can Do With It
+## Read This First
 
-- extract character profiles from `.txt` / `.epub` novels
-- build relationship graphs
-- enter multi-character group chat mode and observe interactions
-- enter one-to-one roleplay mode and speak as a chosen character
-- correct out-of-character replies and write them into memory
+The correct order is not “start chatting immediately.”  
+**Step one is always: provide the novel first, then distill the characters. Only after distillation should you enter chat or roleplay.**
 
-## Most Common Ways To Use It
+The most common user flow is:
 
-### 1. Enter a mode with natural language
+1. attach a novel file, or provide the novel file path
+2. say which characters you want distilled
+3. after distillation finishes, enter group chat or roleplay
 
-The easiest way to use `zaomeng` is not to think in commands first, but to simply say what kind of interaction you want.
+## One Complete Example
 
-For example:
+### Step 1: provide the novel, then ask for distillation
+
+For example, after providing *Dream of the Red Chamber*, you say:
+
+```text
+Distill Lin Daiyu and Jia Baoyu for me
+```
+
+The system will first process the novel and build character profiles plus relationship data.
+
+### Step 2: only after distillation, enter chat
+
+Then you say:
 
 ```text
 Let me play Jia Baoyu and chat with Lin Daiyu
 ```
 
-The system will enter the flow where you play Baoyu and Daiyu replies.  
+Only now does the system enter the flow where you play Baoyu and Daiyu replies.
+
 Then you continue with:
 
 ```text
 Sister, are you feeling well today?
 ```
 
-Now the system treats that as Baoyu's actual spoken line and lets Daiyu answer.
+The system treats that as Baoyu's actual line and lets Daiyu answer.
 
-Another example:
+### Step 3: multi-character chat also comes after distillation
+
+For example, after providing *Romance of the Three Kingdoms* and distilling Liu Bei, Zhang Fei, and Guan Yu, you say:
 
 ```text
 Enter Liu Bei, Zhang Fei, Guan Yu group chat mode
 ```
 
-This starts a three-character group chat flow.  
-Then you can continue with:
+Then you continue with:
 
 ```text
 Liu Bei: Brothers, now that the fighting has briefly eased, this is a rare moment of calm.
 ```
 
-The system will let Zhang Fei and Guan Yu respond from there.
+Now the system lets Zhang Fei and Guan Yu respond.
 
-If you say:
+## Things You Can Say Directly
+
+### Distill characters
+
+```text
+Distill Lin Daiyu and Jia Baoyu for me
+```
+
+```text
+Extract character personas for Liu Bei, Zhang Fei, and Guan Yu from this novel
+```
+
+```text
+Distill Baoyu and Daiyu from Dream of the Red Chamber
+```
+
+### Enter roleplay after distillation
+
+```text
+Let me play Jia Baoyu and chat with Lin Daiyu
+```
+
+```text
+I'll play Liu Bei. Let Guan Yu and Zhang Fei reply to me
+```
+
+### Enter group chat after distillation
+
+```text
+Enter Liu Bei, Zhang Fei, Guan Yu group chat mode
+```
+
+```text
+Let Baoyu, Daiyu, and Baochai discuss this together
+```
+
+### Make everyone speak immediately
 
 ```text
 Let everyone say one line about the alliance with Sun Quan
 ```
 
-The system should begin that round immediately, rather than only telling you that a mode was entered.
+```text
+Scene: Daiyu arrives at the Jia household. Let the relevant characters begin naturally
+```
 
-### 2. Observe mode
+## What It Can Do
 
-Observe mode is useful when you want to watch characters interact.  
-You provide a scene, a topic, or an opening line, and the system lets the relevant characters continue naturally.
+### 1. Character distillation
 
-Useful for:
-
-- checking whether relationship state affects tone
-- checking whether distilled personas feel close to the source
-- experimenting with ensemble scenes
-
-### 3. Act mode
-
-Act mode is useful when you want to play one character yourself.  
-You speak one line, and the other character or characters reply according to persona and relationship state.
-
-Useful for:
-
-- immersive roleplay
-- testing how a specific character responds under a specific relationship
-- running focused character interactions
-
-## Core Capabilities
-
-### 1. Character Distillation
-
-Extract major characters from a novel and build structured profiles, including:
+Extract major characters from `.txt` or `.epub` novels and build profiles including:
 
 - `core_traits`
 - `values`
@@ -99,9 +133,9 @@ Extract major characters from a novel and build structured profiles, including:
 - `taboo_topics`
 - `forbidden_behaviors`
 
-### 2. Relationship Extraction
+### 2. Relationship extraction
 
-Build a relationship graph from the novel. Core fields currently include:
+Build a relationship graph from the novel. Current core fields include:
 
 - `trust`
 - `affection`
@@ -109,30 +143,23 @@ Build a relationship graph from the novel. Core fields currently include:
 - `conflict_point`
 - `typical_interaction`
 
-### 3. Character Chat
+### 3. Character chat
 
-Two supported modes:
+Two chat styles are supported:
 
 - `observe`
-  Give a scene or prompt and let the characters interact around it
+  You provide a scene, topic, or opening line and let characters interact naturally
 - `act`
-  Control one character directly while others reply in character
+  You control one character directly while others reply in character
 
-During chat, the system supports:
-
-- `/save`
-- `/reflect`
-- `/correct character|target|original|corrected|reason`
-- `/quit`
-
-### 4. Correction Memory
+### 4. Correction memory
 
 If a line is clearly out of character, you can save a correction.  
-Later runs will try to avoid repeating the same kind of mistake.
+Later conversations will try to avoid the same kind of mistake.
 
-### 5. Markdown Persona Bundle
+### 5. Markdown persona bundle
 
-Character storage is now markdown-first, not legacy JSON-first.
+Character storage is now markdown-first rather than legacy JSON-first.
 
 Each character lives under:
 
@@ -146,7 +173,14 @@ Each character lives under:
 
 ## Quick Start
 
-### Step 1: distill characters and extract relations
+### 1. Prepare a novel file
+
+Supported formats:
+
+- `.txt`
+- `.epub`
+
+### 2. Distill first, then chat
 
 Using *Dream of the Red Chamber* as an example:
 
@@ -160,7 +194,7 @@ This creates:
 - `data/characters/hongloumeng/<character>/`
 - `data/relations/hongloumeng/hongloumeng_relations.md`
 
-### Step 2: start chatting
+### 3. After distillation, start chatting
 
 Recommended natural-language flow:
 
@@ -174,7 +208,7 @@ Then continue with:
 python -m src.core.main chat --novel data/hongloumeng.txt --session <session_id> --message "妹妹今日可大安了？"
 ```
 
-If you want to start a group chat:
+If you want a multi-character group chat:
 
 ```bash
 python -m src.core.main chat --novel data/sanguo.txt --mode auto --message "进入刘备、张飞、关羽群聊模式"
