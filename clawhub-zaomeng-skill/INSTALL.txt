@@ -1,7 +1,8 @@
 Install Notes (ClawHub Package)
 
-This bundle is designed as a self-contained skill definition package.
-It does not require downloading external repositories during skill execution.
+This bundle is a self-contained skill-definition package for distribution.
+It is packaging metadata, not a replacement for the real local zaomeng engine.
+Do not treat this file as runtime execution guidance for end-user tasks.
 
 Required files in this folder:
 - SKILL.md
@@ -16,6 +17,8 @@ Required files in this folder:
 Optional local integration:
 - If you already host zaomeng locally, map this skill to your local commands.
 - Keep execution policy local-only by default.
+- If the local zaomeng engine is absent, that means the real workflow is unavailable.
+- Prompt templates and schemas in this bundle are for packaging/reference, not for silently simulating the engine in normal use.
 
 Quick validation checklist:
 1) SKILL.md frontmatter has name + description.

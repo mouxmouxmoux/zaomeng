@@ -24,3 +24,4 @@ Example files:
 Packaging intent:
 - Self-contained skill-definition bundle
 - No required runtime download from external repositories
+- Packaging/reference files only; not a substitute for a deployed local zaomeng engine
