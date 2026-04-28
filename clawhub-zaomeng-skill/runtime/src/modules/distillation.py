@@ -239,6 +239,9 @@ class NovelDistiller:
         self.forbidden_behaviors_by_value = dict(
             self.rulebook.get("distillation", "forbidden_behaviors_by_value", {})
         )
+        self.second_pass_mode = str(self.config.get("distillation.second_pass_mode", "auto")).strip().lower()
+        self.stage_window_size = int(self.config.get("distillation.stage_window_size", 6))
+        self.llm_evidence_lines_per_stage = int(self.config.get("distillation.llm_evidence_lines_per_stage", 6))
 
     def estimate_cost(self, novel_path: str) -> float:
         text = self.prepare_novel_text(load_novel_text(novel_path))
@@ -281,6 +284,14 @@ class NovelDistiller:
                 bucket["descriptions"].extend(evidence["descriptions"])
                 bucket["dialogues"].extend(evidence["dialogues"])
                 bucket["thoughts"].extend(evidence["thoughts"])
+                bucket["timeline"].append(
+                    {
+                        "index": idx,
+                        "descriptions": list(evidence["descriptions"]),
+                        "dialogues": list(evidence["dialogues"]),
+                        "thoughts": list(evidence["thoughts"]),
+                    }
+                )
                 arc_points[name].append((idx, chunk_values.get(name, {})))
 
         out_dir = ensure_dir(Path(output_dir) if output_dir else self.path_provider.characters_root(novel_id))
@@ -295,6 +306,13 @@ class NovelDistiller:
                 "thought_count": len(aggregated[name]["thoughts"]),
                 "chunk_count": len(arc_points.get(name, [])),
             }
+            profile = self._refine_profile_with_llm(
+                profile,
+                bucket=aggregated[name],
+                arc_values=arc_points.get(name, []),
+            )
+            profile["novel_id"] = novel_id
+            profile["source_path"] = novel_path
             profiles[name] = profile
             self._export_persona_bundle(out_dir, profile)
         return profiles
@@ -491,12 +509,13 @@ class NovelDistiller:
         descriptions = self._dedupe_texts(bucket["descriptions"], 24)
         dialogues = self._dedupe_texts(bucket["dialogues"], 8)
         thoughts = self._dedupe_texts(bucket["thoughts"], 12)
+        timeline = list(bucket.get("timeline", []))
         archetype = self._infer_archetype(name, descriptions, dialogues, thoughts)
         values = self._infer_values_from_corpus(self._merge_arc_values(arc_values), descriptions, dialogues, thoughts, archetype)
         core_traits = self._infer_traits(descriptions + dialogues + thoughts, archetype)
         speech_style = self._infer_speech_style(dialogues, archetype)
         decision_rules = self._infer_decision_rules(thoughts, descriptions, dialogues, archetype)
-        arc = self._build_arc(arc_values, values)
+        arc = self._build_arc(arc_values, values, timeline)
         identity_anchor = self._infer_identity_anchor(core_traits, values, decision_rules, archetype)
         soul_goal = self._infer_soul_goal(values, core_traits, archetype)
         life_experience = self._infer_life_experience(descriptions, dialogues, thoughts, decision_rules, values, archetype)
@@ -560,8 +579,261 @@ class NovelDistiller:
             "belief_anchor": belief_anchor,
             "stance_stability": stance_stability,
             "arc": arc,
+            "arc_summary": self._infer_arc_summary(arc),
+            "arc_confidence": self._infer_arc_confidence(arc, timeline),
             "archetype": archetype,
         }
+
+    def _refine_profile_with_llm(
+        self,
+        profile: Dict[str, Any],
+        *,
+        bucket: Dict[str, List[str]],
+        arc_values: List[Tuple[int, Dict[str, int]]],
+    ) -> Dict[str, Any]:
+        if not self._should_use_llm_second_pass():
+            return profile
+
+        try:
+            messages = self._build_second_pass_messages(profile, bucket, arc_values)
+            response = self.llm_client.chat_completion(
+                messages,
+                temperature=0.2,
+                max_tokens=1600,
+            )
+            content = str(response.get("content", "")).strip()
+            if not content:
+                return profile
+            parsed = self._parse_markdown_kv(content)
+            if not parsed:
+                return profile
+            refined = self._apply_profile_refinement(profile, parsed)
+            refined["arc_summary"] = self._infer_arc_summary(refined.get("arc", {}))
+            refined["arc_confidence"] = self._safe_int(parsed.get("arc_confidence", refined.get("arc_confidence", 0)))
+            return refined
+        except Exception:
+            return profile
+
+    def _should_use_llm_second_pass(self) -> bool:
+        if self.second_pass_mode == "rule-only":
+            return False
+        if self.second_pass_mode == "llm-only":
+            return True
+        return bool(getattr(self.llm_client, "is_generation_enabled", lambda: False)())
+
+    def _build_second_pass_messages(
+        self,
+        profile: Dict[str, Any],
+        bucket: Dict[str, List[str]],
+        arc_values: List[Tuple[int, Dict[str, int]]],
+    ) -> List[Dict[str, str]]:
+        prompt_text = self._load_auxiliary_markdown(
+            "prompt_file",
+            "distill_prompt.md",
+            fallback=(
+                "# 人物档案蒸馏\n"
+                "你需要在现有规则草稿基础上做第二次提炼，强化深层人格、阶段弧光与差异化表达。"
+            ),
+        )
+        schema_text = self._load_auxiliary_markdown("reference_file", "output_schema.md", fallback="# 输出规范")
+        style_text = self._load_auxiliary_markdown("reference_file", "style_differ.md", fallback="# 风格差异化")
+        logic_text = self._load_auxiliary_markdown("reference_file", "logic_constraint.md", fallback="# 逻辑约束")
+        draft_markdown = self._render_profile_md(profile)
+        evidence_markdown = self._render_second_pass_evidence(profile["name"], bucket, arc_values)
+
+        system_prompt = "\n\n".join(
+            [
+                prompt_text,
+                schema_text,
+                style_text,
+                logic_text,
+                (
+                    "第二次蒸馏任务：\n"
+                    "- 你会收到一个规则草稿版 PROFILE 和对应证据。\n"
+                    "- 你的职责是把深层人格字段、阶段弧光字段、表达特征字段提炼得更具体、更去同质化。\n"
+                    "- 只能基于给定证据修订，不得脑补剧情外设定。\n"
+                    "- 输出必须仍然是可解析的 Markdown，每行使用 `- key: value`。\n"
+                    "- 请输出完整 `# PROFILE` 文档，而不是解释。"
+                ),
+            ]
+        )
+        user_prompt = "\n\n".join(
+            [
+                "以下是规则草稿：",
+                draft_markdown,
+                "以下是证据摘要：",
+                evidence_markdown,
+            ]
+        )
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+    def _render_second_pass_evidence(
+        self,
+        name: str,
+        bucket: Dict[str, List[str]],
+        arc_values: List[Tuple[int, Dict[str, int]]],
+    ) -> str:
+        timeline = list(bucket.get("timeline", []))
+        stage_windows = self._build_stage_windows(timeline)
+        lines = [
+            f"# EVIDENCE FOR {name}",
+            "",
+            "## Early Stage",
+        ]
+        lines.extend(f"- {line}" for line in stage_windows.get("start", [])[: self.llm_evidence_lines_per_stage])
+        lines.extend(["", "## Mid Stage"])
+        lines.extend(f"- {line}" for line in stage_windows.get("mid", [])[: self.llm_evidence_lines_per_stage])
+        lines.extend(["", "## Late Stage"])
+        lines.extend(f"- {line}" for line in stage_windows.get("end", [])[: self.llm_evidence_lines_per_stage])
+        lines.extend(["", "## Dialogue Samples"])
+        lines.extend(f"- {line}" for line in self._dedupe_texts(bucket.get("dialogues", []), 8)[:8])
+        lines.extend(["", "## Thought Samples"])
+        lines.extend(f"- {line}" for line in self._dedupe_texts(bucket.get("thoughts", []), 6)[:6])
+        lines.extend(["", "## Description Samples"])
+        lines.extend(f"- {line}" for line in self._dedupe_texts(bucket.get("descriptions", []), 6)[:6])
+        lines.extend(["", "## Arc Metrics"])
+        for idx, values in arc_values[:12]:
+            lines.append(f"- chunk_{idx}: {self._join_metric_map(values)}")
+        return "\n".join(lines).rstrip() + "\n"
+
+    def _load_auxiliary_markdown(self, method_name: str, filename: str, fallback: str) -> str:
+        resolver = getattr(self.path_provider, method_name, None)
+        if resolver is None:
+            return fallback
+        path = resolver(filename)
+        if not path or not Path(path).exists():
+            return fallback
+        return Path(path).read_text(encoding="utf-8")
+
+    @staticmethod
+    def _parse_markdown_kv(text: str) -> Dict[str, str]:
+        parsed: Dict[str, str] = {}
+        for raw_line in str(text or "").splitlines():
+            line = raw_line.strip()
+            if not line.startswith("- ") or ":" not in line:
+                continue
+            key, value = line[2:].split(":", 1)
+            key_text = key.strip()
+            value_text = value.strip()
+            if not key_text or not value_text:
+                continue
+            if key_text in parsed and parsed[key_text]:
+                parsed[key_text] = f"{parsed[key_text]}；{value_text}"
+            else:
+                parsed[key_text] = value_text
+        return parsed
+
+    def _apply_profile_refinement(self, profile: Dict[str, Any], parsed: Dict[str, str]) -> Dict[str, Any]:
+        refined = dict(profile)
+        list_fields = {
+            "core_traits",
+            "typical_lines",
+            "decision_rules",
+            "life_experience",
+            "taboo_topics",
+            "forbidden_behaviors",
+            "strengths",
+            "weaknesses",
+            "cognitive_limits",
+            "fear_triggers",
+            "key_bonds",
+            "signature_phrases",
+            "sentence_openers",
+            "connective_tokens",
+            "sentence_endings",
+            "forbidden_fillers",
+        }
+        dict_targets = {
+            "cadence": ("speech_habits", "cadence"),
+            "signature_phrases": ("speech_habits", "signature_phrases"),
+            "sentence_openers": ("speech_habits", "sentence_openers"),
+            "connective_tokens": ("speech_habits", "connective_tokens"),
+            "sentence_endings": ("speech_habits", "sentence_endings"),
+            "forbidden_fillers": ("speech_habits", "forbidden_fillers"),
+            "anger_style": ("emotion_profile", "anger_style"),
+            "joy_style": ("emotion_profile", "joy_style"),
+            "grievance_style": ("emotion_profile", "grievance_style"),
+        }
+        direct_fields = {
+            "speech_style",
+            "identity_anchor",
+            "soul_goal",
+            "worldview",
+            "thinking_style",
+            "core_identity",
+            "faction_position",
+            "background_imprint",
+            "world_rule_fit",
+            "social_mode",
+            "hidden_desire",
+            "inner_conflict",
+            "story_role",
+            "belief_anchor",
+            "private_self",
+            "stance_stability",
+            "reward_logic",
+            "action_style",
+            "arc_summary",
+        }
+
+        for key, value in parsed.items():
+            if key in {"arc_start", "arc_mid", "arc_end"}:
+                bucket_name = key.split("_", 1)[1]
+                arc_bucket = dict(refined.get("arc", {}).get(bucket_name, {}))
+                arc_bucket.update(self._split_metric_map(value))
+                refined.setdefault("arc", {})[bucket_name] = arc_bucket
+                continue
+            if key == "values":
+                value_map = self._split_metric_map(value)
+                if value_map:
+                    refined["values"] = {
+                        metric: max(0, min(10, self._safe_int(metric_value)))
+                        for metric, metric_value in value_map.items()
+                    }
+                continue
+            if key in dict_targets:
+                parent, child = dict_targets[key]
+                parent_bucket = dict(refined.get(parent, {})) if isinstance(refined.get(parent, {}), dict) else {}
+                parent_bucket[child] = self._split_persona_scalar(value) if key in list_fields else value
+                refined[parent] = parent_bucket
+                continue
+            if key in direct_fields:
+                refined[key] = value
+                continue
+            if key in list_fields:
+                refined[key] = self._split_persona_scalar(value)
+        return refined
+
+    @staticmethod
+    def _split_persona_scalar(value: str) -> List[str]:
+        return [item.strip() for item in re.split(r"[；;]\s*", str(value or "").strip()) if item.strip()]
+
+    @staticmethod
+    def _split_metric_map(value: str) -> Dict[str, Any]:
+        result: Dict[str, Any] = {}
+        for item in re.split(r"[；;]\s*", str(value or "").strip()):
+            if not item or "=" not in item:
+                continue
+            key, raw = item.split("=", 1)
+            key_text = key.strip()
+            raw_text = raw.strip()
+            if not key_text:
+                continue
+            if re.fullmatch(r"-?\d+", raw_text):
+                result[key_text] = int(raw_text)
+            else:
+                result[key_text] = raw_text
+        return result
+
+    @staticmethod
+    def _safe_int(value: Any) -> int:
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return 0
 
     def _infer_traits(self, lines: List[str], archetype: str) -> List[str]:
         if not lines:
@@ -639,24 +911,35 @@ class NovelDistiller:
         self,
         arc_values: List[Tuple[int, Dict[str, int]]],
         fallback_values: Dict[str, int],
+        timeline: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        stages = self._build_stage_windows(timeline)
         if not arc_values:
             return {
-                "start": {},
-                "mid": {"trigger_event": "未识别到稳定弧光证据"},
-                "end": {"final_state": "未判定（证据不足）"},
+                "start": {"phase_summary": self._summarize_stage_window(stages.get("start", []))},
+                "mid": {
+                    "phase_summary": self._summarize_stage_window(stages.get("mid", [])),
+                    "trigger_event": "未识别到稳定弧光证据",
+                },
+                "end": {
+                    "phase_summary": self._summarize_stage_window(stages.get("end", [])),
+                    "final_state": "未判定（证据不足）",
+                },
             }
 
         ordered = sorted(arc_values, key=lambda item: item[0])
         start = dict(ordered[0][1] or {})
         mid = dict(ordered[len(ordered) // 2][1] or {})
         end = dict(ordered[-1][1] or {})
+        start["phase_summary"] = self._summarize_stage_window(stages.get("start", []))
+        mid["phase_summary"] = self._summarize_stage_window(stages.get("mid", []))
+        end["phase_summary"] = self._summarize_stage_window(stages.get("end", []))
 
         if len(ordered) < 2:
             return {
                 "start": start,
-                "mid": {"trigger_event": "样本跨度不足，未识别到稳定变化事件"},
-                "end": {"final_state": "未判定（片段跨度不足）"},
+                "mid": {**mid, "trigger_event": "样本跨度不足，未识别到稳定变化事件"},
+                "end": {**end, "final_state": "未判定（片段跨度不足）"},
             }
 
         spread = 0
@@ -666,8 +949,8 @@ class NovelDistiller:
         if spread < 1:
             return {
                 "start": start,
-                "mid": {"trigger_event": "未识别到明确变化事件"},
-                "end": {"final_state": "静态人物或当前片段未呈现稳定弧光"},
+                "mid": {**mid, "trigger_event": "未识别到明确变化事件"},
+                "end": {**end, "final_state": "静态人物或当前片段未呈现稳定弧光"},
             }
 
         return {
@@ -675,6 +958,64 @@ class NovelDistiller:
             "mid": {**mid, "trigger_event": "关键关系或冲突推动"},
             "end": {**end, "final_state": "阶段性收束"},
         }
+
+    def _build_stage_windows(self, timeline: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+        if not timeline:
+            return {"start": [], "mid": [], "end": []}
+        ordered = sorted(timeline, key=lambda item: int(item.get("index", 0)))
+        window = max(1, self.stage_window_size)
+        start_entries = ordered[:window]
+        end_entries = ordered[-window:]
+        mid_start = max(0, (len(ordered) // 2) - (window // 2))
+        mid_entries = ordered[mid_start : mid_start + window]
+        return {
+            "start": self._flatten_stage_entries(start_entries),
+            "mid": self._flatten_stage_entries(mid_entries),
+            "end": self._flatten_stage_entries(end_entries),
+        }
+
+    @staticmethod
+    def _flatten_stage_entries(entries: List[Dict[str, Any]]) -> List[str]:
+        lines: List[str] = []
+        for item in entries:
+            for key in ("descriptions", "thoughts", "dialogues"):
+                for line in item.get(key, []):
+                    text = str(line).strip()
+                    if text:
+                        lines.append(text)
+        return NovelDistiller._dedupe_texts(lines, 12)
+
+    @staticmethod
+    def _summarize_stage_window(lines: List[str]) -> str:
+        if not lines:
+            return "该阶段证据不足"
+        first = str(lines[0]).strip()
+        if len(first) > 40:
+            first = f"{first[:40]}..."
+        return first
+
+    @staticmethod
+    def _infer_arc_summary(arc: Dict[str, Any]) -> str:
+        start = arc.get("start", {}) if isinstance(arc.get("start", {}), dict) else {}
+        mid = arc.get("mid", {}) if isinstance(arc.get("mid", {}), dict) else {}
+        end = arc.get("end", {}) if isinstance(arc.get("end", {}), dict) else {}
+        trigger = str(mid.get("trigger_event", "")).strip()
+        final_state = str(end.get("final_state", "")).strip()
+        if trigger and final_state:
+            return f"{trigger} -> {final_state}"
+        return final_state or trigger or str(start.get("phase_summary", "")).strip()
+
+    @staticmethod
+    def _infer_arc_confidence(arc: Dict[str, Any], timeline: List[Dict[str, Any]]) -> int:
+        points = max(0, min(10, len(timeline)))
+        trigger = str((arc.get("mid", {}) or {}).get("trigger_event", "")).strip()
+        final_state = str((arc.get("end", {}) or {}).get("final_state", "")).strip()
+        bonus = 0
+        if trigger and "未识别" not in trigger:
+            bonus += 2
+        if final_state and "未判定" not in final_state:
+            bonus += 2
+        return max(1, min(10, min(6, points) + bonus))
 
     def _infer_speech_style(self, lines: List[str], archetype: str) -> str:
         configured = str(self.archetypes.get(archetype, {}).get("speech_style", "")).strip() if archetype != "default" else ""
@@ -1412,7 +1753,9 @@ class NovelDistiller:
             "## Arc\n"
             f"- arc_start: {self._join_metric_map(arc.get('start', {}))}\n"
             f"- arc_mid: {self._join_metric_map(arc.get('mid', {}))}\n"
-            f"- arc_end: {self._join_metric_map(arc.get('end', {}))}\n\n"
+            f"- arc_end: {self._join_metric_map(arc.get('end', {}))}\n"
+            f"- arc_summary: {profile.get('arc_summary', '')}\n"
+            f"- arc_confidence: {profile.get('arc_confidence', 0)}\n\n"
             "## Evidence\n"
             f"- description_count: {evidence.get('description_count', 0)}\n"
             f"- dialogue_count: {evidence.get('dialogue_count', 0)}\n"
@@ -1645,7 +1988,7 @@ class NovelDistiller:
 
     @staticmethod
     def _empty_bucket() -> Dict[str, List[str]]:
-        return {"descriptions": [], "dialogues": [], "thoughts": []}
+        return {"descriptions": [], "dialogues": [], "thoughts": [], "timeline": []}
 
     def _value_dimensions(self) -> List[str]:
         dims = self.config.get("distillation.values_dimensions", []) or list(self.value_markers.keys())

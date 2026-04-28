@@ -11,6 +11,19 @@ class CostEstimator(Protocol):
     def estimate_cost(self, prompt: str, expected_completion_ratio: float = 0.0) -> float:
         ...
 
+    def chat_completion(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        temperature: Optional[float] = None,
+        max_tokens: Optional[int] = None,
+        stream: bool = False,
+    ) -> Dict[str, Any]:
+        ...
+
+    def is_generation_enabled(self) -> bool:
+        ...
+
 
 class CorrectionService(Protocol):
     def detect_ooc(self, profile: Dict[str, Any], message: str) -> Any:
@@ -59,3 +72,11 @@ class PathProviderLike(Protocol):
     def corrections_dir(self) -> Path:
         ...
 
+    def prompt_file(self, filename: str) -> Path:
+        ...
+
+    def reference_file(self, filename: str) -> Path:
+        ...
+
+    def visualization_file(self, novel_id: str, suffix: str) -> Path:
+        ...

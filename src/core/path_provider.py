@@ -46,3 +46,23 @@ class PathProvider:
 
     def logs_dir(self) -> Path:
         return ensure_dir(self.config.get_path("logs"))
+
+    def prompt_file(self, filename: str) -> Path:
+        return self._find_auxiliary_file("prompts", filename)
+
+    def reference_file(self, filename: str) -> Path:
+        return self._find_auxiliary_file("references", filename)
+
+    def visualization_file(self, novel_id: str, suffix: str) -> Path:
+        return self.relations_root(novel_id) / f"{novel_id}_relations{suffix}"
+
+    def _find_auxiliary_file(self, folder: str, filename: str) -> Path:
+        candidates = (
+            self.project_root() / folder / filename,
+            self.project_root() / "clawhub-zaomeng-skill" / folder / filename,
+            self.project_root().parent / folder / filename,
+        )
+        for path in candidates:
+            if path.exists():
+                return path
+        return candidates[0]

@@ -762,6 +762,8 @@ class ChatEngine:
             "fear_triggers": self._split_persona_value(parsed.get("fear_triggers", "")),
             "key_bonds": self._split_persona_value(parsed.get("key_bonds", "")),
             "action_style": parsed.get("action_style", ""),
+            "arc_summary": parsed.get("arc_summary", ""),
+            "arc_confidence": self._safe_int(parsed.get("arc_confidence", 0)),
             "speech_habits": {
                 "cadence": parsed.get("cadence", ""),
                 "signature_phrases": self._split_persona_value(parsed.get("signature_phrases", "")),
@@ -1024,6 +1026,7 @@ class ChatEngine:
             "stance_stability",
             "reward_logic",
             "action_style",
+            "arc_summary",
         }
 
         for key, value in parsed.items():

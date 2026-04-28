@@ -51,6 +51,9 @@ class Config:
             "max_characters": 10,
             "min_appearances": 3,
             "traits_max_count": 10,
+            "second_pass_mode": "auto",
+            "stage_window_size": 6,
+            "llm_evidence_lines_per_stage": 6,
             "values_dimensions": [
                 "勇气", "智慧", "善良", "忠诚", "野心", 
                 "正义", "自由", "责任"
