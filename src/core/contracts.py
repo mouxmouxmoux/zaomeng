@@ -82,12 +82,44 @@ class PathProviderLike(Protocol):
         ...
 
 
+class SessionStore(Protocol):
+    def load_session(self, session_id: str, default: Any = None) -> Any:
+        ...
+
+    def save_session(self, session: Dict[str, Any]) -> None:
+        ...
+
+    def save_relation_snapshot(self, session: Dict[str, Any]) -> None:
+        ...
+
+
+class RelationStore(Protocol):
+    def load_relations(self, novel_id: str, default: Any = None) -> Any:
+        ...
+
+    def save_relations(
+        self,
+        novel_id: str,
+        relations: Dict[str, Dict[str, Any]],
+        output_path: Optional[str] = None,
+    ) -> None:
+        ...
+
+
+class RelationVisualizationExporter(Protocol):
+    def export_visualizations(self, relations: Dict[str, Dict[str, Any]], novel_id: str) -> None:
+        ...
+
+
 class RuntimePartsLike(Protocol):
     config: Any
     path_provider: PathProviderLike
     rulebook: RuleProvider
     llm: CostEstimator
     token_counter: Any
+    session_store: SessionStore
+    relation_store: RelationStore
+    relation_visualization_exporter: RelationVisualizationExporter
     reflection: Any
     distiller: Any
     speaker: Any

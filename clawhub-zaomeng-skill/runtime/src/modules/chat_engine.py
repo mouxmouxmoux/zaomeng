@@ -11,10 +11,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
-from src.core.contracts import RuntimePartsLike
+from src.core.contracts import RelationStore, RuntimePartsLike, SessionStore
 from src.core.exceptions import ZaomengError
 from src.core.path_provider import PathProvider
+from src.core.relation_store import MarkdownRelationStore
 from src.core.rulebook import RuleBook
+from src.core.session_store import MarkdownSessionStore
 from src.core.llm_client import LLMClient
 from src.modules.distillation import NovelDistiller
 from src.modules.reflection import ReflectionEngine
@@ -27,7 +29,6 @@ from src.utils.file_utils import (
     normalize_relation_key,
     novel_id_from_input,
     safe_filename,
-    save_markdown_data,
 )
 
 
@@ -49,6 +50,8 @@ class ChatEngine:
         distiller: Optional[NovelDistiller] = None,
         rulebook: Optional[RuleBook] = None,
         path_provider: Optional[PathProvider] = None,
+        session_store: Optional[SessionStore] = None,
+        relation_store: Optional[RelationStore] = None,
     ):
         self.config = config or Config()
         if (
@@ -68,8 +71,9 @@ class ChatEngine:
         self.reflection = reflection
         self.distiller = distiller
         self.speaker = speaker
+        self.session_store = session_store or MarkdownSessionStore(path_provider)
+        self.relation_store = relation_store or MarkdownRelationStore(path_provider)
         self.characters_dir = self.path_provider.characters_root()
-        self.sessions_dir = self.path_provider.sessions_dir()
         self.relations_dir = self.path_provider.relations_root()
         self.generation_mode = str(self.config.get("chat_engine.generation_mode", "auto")).strip().lower()
         self.enable_turn_interactions = bool(self.config.get("chat_engine.enable_turn_interactions", True))
@@ -91,6 +95,8 @@ class ChatEngine:
             distiller=parts.distiller,
             rulebook=parts.rulebook,
             path_provider=parts.path_provider,
+            session_store=parts.session_store,
+            relation_store=parts.relation_store,
         )
 
     def create_session(self, novel: str, mode: str) -> Dict[str, Any]:
@@ -122,8 +128,7 @@ class ChatEngine:
         return session
 
     def restore_session(self, session_id: str) -> Dict[str, Any]:
-        path = self.sessions_dir / f"{session_id}.md"
-        data = load_markdown_data(path, default=None)
+        data = self.session_store.load_session(session_id, default=None)
         if not data:
             raise FileNotFoundError(f"Session not found: {session_id}")
         data.setdefault("novel_id", novel_id_from_input(data.get("novel", session_id)))
@@ -618,16 +623,8 @@ class ChatEngine:
             }
 
     def _save_session(self, session: Dict[str, Any]) -> None:
-        save_markdown_data(
-            self.sessions_dir / f"{session['id']}.md",
-            session,
-            title="SESSION",
-            summary=[
-                f"- id: {session.get('id', '')}",
-                f"- novel_id: {session.get('novel_id', '')}",
-                f"- mode: {session.get('mode', '')}",
-            ],
-        )
+        session["updated_at"] = int(time.time())
+        self.session_store.save_session(session)
         self._save_relation_snapshot(session)
 
     def _persist_runtime_guidance(self, session: Dict[str, Any], speaker: str, message: str) -> None:
@@ -1153,22 +1150,8 @@ class ChatEngine:
         return matrix
 
     def _save_relation_snapshot(self, session: Dict[str, Any]) -> None:
-        payload = {
-            "session_id": session.get("id"),
-            "novel_id": session.get("novel_id"),
-            "updated_at": int(time.time()),
-            "relation_matrix": session.get("state", {}).get("relation_matrix", {}),
-            "relation_delta": session.get("state", {}).get("relation_delta", {}),
-        }
-        save_markdown_data(
-            self.sessions_dir / f"{session['id']}_relations.md",
-            payload,
-            title="SESSION_RELATIONS",
-            summary=[
-                f"- session_id: {session.get('id', '')}",
-                f"- novel_id: {session.get('novel_id', '')}",
-            ],
-        )
+        session.setdefault("updated_at", int(time.time()))
+        self.session_store.save_relation_snapshot(session)
 
     def _get_relation_state_from_disk(
         self,
@@ -1180,7 +1163,7 @@ class ChatEngine:
         if not rel_file:
             base = {}
         else:
-            payload = load_markdown_data(rel_file, default={}) or {}
+            payload = self.relation_store.load_relations(rel_file.parent.name, default={}) or {}
             rel = payload.get("relations", {}) if isinstance(payload, dict) else {}
             normalized = {normalize_relation_key(key): value for key, value in rel.items()}
             base = normalized.get(self._pair_key(normalize_character_name(speaker), normalize_character_name(target)), {})

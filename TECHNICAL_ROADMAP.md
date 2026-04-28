@@ -49,10 +49,12 @@ Tasks:
 12. Drive wrapper guardrails from the runtime-owned manifest entries so source/runtime wrapper pairs stay aligned without duplicate test lists.
 13. Derive runtime layer documentation checks from the mirror manifest so packaging docs and wrapper docs drift less easily.
 14. Keep `include` and `runtime_owned` under the same default mirror/report path so wrapper drift is caught by the standard runtime sync flow.
+15. Extract markdown-backed session and relation stores behind repository-style interfaces so chat and relation extraction stop persisting those assets directly.
+16. Route relation graph visualization export through an injected exporter so extraction and rendering can evolve independently.
 
 ## P2: Reliability And Developer Experience
 
-Status: planned
+Status: in progress
 
 Goals:
 - Make failures easier to diagnose.

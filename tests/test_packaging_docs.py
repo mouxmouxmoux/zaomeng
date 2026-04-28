@@ -40,6 +40,15 @@ class PackagingDocsTests(unittest.TestCase):
             self.assertIn(entry, skill_readme)
             self.assertIn(entry, skill_readme_en)
 
+    def test_skill_docs_do_not_treat_runtime_llm_config_as_openclaw_chat_prerequisite(self):
+        clawhub_skill = Path("clawhub-zaomeng-skill/SKILL.md").read_text(encoding="utf-8")
+        openclaw_skill = Path("openclaw-skill/SKILL.md").read_text(encoding="utf-8")
+
+        self.assertIn("不要因为运行时没单独填写 `runtime/config.yaml` 就停下来让用户二选一", clawhub_skill)
+        self.assertIn("不要插入“配置 LLM（推荐）/继续规则模式”这类额外选择题", clawhub_skill)
+        self.assertIn("不要再把“是否单独配置 zaomeng 运行时 LLM”当成继续群聊的前置条件", openclaw_skill)
+        self.assertIn("不要向用户抛出“去填 runtime/config.yaml”或“配置 LLM / 继续规则模式”的二选一提示", openclaw_skill)
+
     def test_manifest_lists_all_managed_runtime_python_files(self):
         manifest_text = Path("clawhub-zaomeng-skill/MANIFEST.md").read_text(encoding="utf-8")
         for entry in load_managed_runtime_paths():

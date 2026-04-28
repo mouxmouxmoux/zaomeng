@@ -11,7 +11,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
-from src.core.contracts import CostEstimator, PathProviderLike, RuleProvider, RuntimePartsLike
+from src.core.contracts import (
+    CostEstimator,
+    PathProviderLike,
+    RelationStore,
+    RelationVisualizationExporter,
+    RuleProvider,
+    RuntimePartsLike,
+)
+from src.core.relation_store import MarkdownRelationStore
+from src.core.relation_visualization_exporter import MermaidRelationVisualizationExporter
 from src.modules.distillation import NovelDistiller
 from src.utils.file_utils import novel_id_from_input, save_markdown_data
 from src.utils.text_parser import load_novel_text, split_sentences
@@ -36,6 +45,8 @@ class RelationshipExtractor:
         distiller: Optional[NovelDistiller] = None,
         rulebook: Optional[RuleProvider] = None,
         path_provider: Optional[PathProviderLike] = None,
+        relation_store: Optional[RelationStore] = None,
+        relation_visualization_exporter: Optional[RelationVisualizationExporter] = None,
     ):
         self.config = config or Config()
         if (
@@ -53,6 +64,8 @@ class RelationshipExtractor:
         self.llm_client = llm_client
         self.token_counter = token_counter
         self.distiller = distiller
+        self.relation_store = relation_store or MarkdownRelationStore(path_provider)
+        self.relation_visualization_exporter = relation_visualization_exporter or MermaidRelationVisualizationExporter(self)
         self._last_chunk_count = 0
 
         rules = self.rulebook.section("relationships")
@@ -74,6 +87,8 @@ class RelationshipExtractor:
             distiller=parts.distiller,
             rulebook=parts.rulebook,
             path_provider=parts.path_provider,
+            relation_store=parts.relation_store,
+            relation_visualization_exporter=parts.relation_visualization_exporter,
         )
 
     def estimate_cost(self, novel_path: str) -> float:
@@ -298,24 +313,7 @@ class RelationshipExtractor:
         novel_id: str,
         output_path: Optional[str],
     ) -> None:
-        if output_path:
-            output = Path(output_path)
-            if output.suffix.lower() == ".md":
-                path = output
-            else:
-                path = output / f"{novel_id}_relations.md"
-        else:
-            path = self.path_provider.relations_file(novel_id)
-
-        save_markdown_data(
-            path,
-            {"novel_id": novel_id, "relations": relations},
-            title="RELATION_GRAPH",
-            summary=[
-                f"- novel_id: {novel_id}",
-                f"- relation_count: {len(relations)}",
-            ],
-        )
+        self.relation_store.save_relations(novel_id, relations, output_path=output_path)
 
     def _export_relation_bundle(self, relations: Dict[str, Dict[str, Any]], novel_id: str) -> None:
         by_character: Dict[str, List[tuple[str, Dict[str, Any]]]] = defaultdict(list)
@@ -340,28 +338,7 @@ class RelationshipExtractor:
             self.distiller.refresh_navigation(persona_dir, character_name)
 
     def _export_relation_visualizations(self, relations: Dict[str, Dict[str, Any]], novel_id: str) -> None:
-        node_styles = self._build_visual_node_styles(novel_id, relations)
-        mermaid_graph = self._render_mermaid_graph(relations, node_styles=node_styles)
-        mermaid_path = self.path_provider.visualization_file(novel_id, ".mermaid.md")
-        save_markdown_data(
-            mermaid_path,
-            {
-                "novel_id": novel_id,
-                "relation_count": len(relations),
-                "diagram": mermaid_graph,
-            },
-            title="RELATION_GRAPH_VISUAL",
-            summary=[
-                f"- novel_id: {novel_id}",
-                f"- relation_count: {len(relations)}",
-            ],
-        )
-
-        html_path = self.path_provider.visualization_file(novel_id, ".html")
-        html_path.write_text(
-            self._render_relation_html(novel_id, relations, node_styles=node_styles, mermaid_graph=mermaid_graph),
-            encoding="utf-8",
-        )
+        self.relation_visualization_exporter.export_visualizations(relations, novel_id)
 
     def _render_mermaid_graph(
         self,

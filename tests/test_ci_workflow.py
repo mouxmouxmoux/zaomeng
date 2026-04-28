@@ -18,6 +18,17 @@ class CIWorkflowTests(unittest.TestCase):
         self.assertIn("tests.test_runtime_entrypoint", script_text)
         self.assertIn("tests.test_runtime_wrappers", script_text)
         self.assertIn("tests.test_packaging_docs", script_text)
+        self.assertIn('"run mypy"', script_text)
+        self.assertIn('"mypy.ini"', script_text)
+
+    def test_mypy_config_targets_guardrail_modules(self):
+        config_text = Path("mypy.ini").read_text(encoding="utf-8")
+        self.assertIn("scripts/check_runtime_mirror.py", config_text)
+        self.assertIn("tests/test_runtime_mirror.py", config_text)
+        self.assertIn("tests/test_runtime_wrappers.py", config_text)
+        self.assertIn("tests/test_packaging_docs.py", config_text)
+        self.assertIn("tests/test_ci_workflow.py", config_text)
+        self.assertIn("src/core/contracts.py", config_text)
 
 
 if __name__ == "__main__":

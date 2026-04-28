@@ -8,7 +8,10 @@ from unittest.mock import Mock, patch
 
 from src.core.config import Config
 from src.core.main import ZaomengCLI
+from src.core.relation_store import MarkdownRelationStore
+from src.core.relation_visualization_exporter import MermaidRelationVisualizationExporter
 from src.core.runtime_factory import RuntimeDependencyOverrides, build_runtime_parts
+from src.core.session_store import MarkdownSessionStore
 from src.modules.distillation import NovelDistiller
 from src.utils.file_utils import load_markdown_data, normalize_character_name, normalize_relation_key, save_markdown_data
 
@@ -96,6 +99,9 @@ class RelationBehaviorTests(unittest.TestCase):
             "rulebook": parts.rulebook,
             "llm": parts.llm,
             "token_counter": parts.token_counter,
+            "session_store": parts.session_store,
+            "relation_store": parts.relation_store,
+            "relation_visualization_exporter": parts.relation_visualization_exporter,
             "reflection": parts.reflection,
             "distiller": parts.distiller,
             "speaker": parts.speaker,
@@ -199,6 +205,8 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertIs(engine.distiller, parts.distiller)
         self.assertIs(engine.rulebook, parts.rulebook)
         self.assertIs(engine.path_provider, parts.path_provider)
+        self.assertIs(engine.session_store, parts.session_store)
+        self.assertIs(engine.relation_store, parts.relation_store)
 
     def test_runtime_parts_build_chat_engine_supports_custom_patch_target(self):
         parts = build_runtime_parts(Config())
@@ -216,6 +224,8 @@ class RelationBehaviorTests(unittest.TestCase):
             distiller=parts.distiller,
             rulebook=parts.rulebook,
             path_provider=parts.path_provider,
+            session_store=parts.session_store,
+            relation_store=parts.relation_store,
         )
 
     def test_runtime_parts_module_factories_reuse_shared_dependencies(self):
@@ -226,6 +236,11 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertIs(parts.distiller.token_counter, parts.token_counter)
         self.assertIs(parts.extractor.distiller, parts.distiller)
         self.assertIs(parts.extractor.llm_client, parts.llm)
+        self.assertIsInstance(parts.session_store, MarkdownSessionStore)
+        self.assertIsInstance(parts.relation_store, MarkdownRelationStore)
+        self.assertIsInstance(parts.relation_visualization_exporter, MermaidRelationVisualizationExporter)
+        self.assertIs(parts.extractor.relation_store, parts.relation_store)
+        self.assertIs(parts.extractor.relation_visualization_exporter, parts.relation_visualization_exporter)
 
     def test_runtime_parts_accept_dependency_overrides(self):
         config = Config()
@@ -286,6 +301,9 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertIs(forked.rulebook, parts.rulebook)
         self.assertIs(forked.llm, parts.llm)
         self.assertIs(forked.token_counter, parts.token_counter)
+        self.assertIs(forked.session_store, parts.session_store)
+        self.assertIs(forked.relation_store, parts.relation_store)
+        self.assertIs(forked.relation_visualization_exporter, parts.relation_visualization_exporter)
         self.assertIsNot(forked, parts)
         self.assertIsNot(forked.reflection, parts.reflection)
         self.assertIsNot(forked.distiller, parts.distiller)
@@ -308,6 +326,9 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertIs(forked.rulebook, parts.rulebook)
         self.assertIs(forked.llm, parts.llm)
         self.assertIs(forked.token_counter, parts.token_counter)
+        self.assertIs(forked.session_store, parts.session_store)
+        self.assertIs(forked.relation_store, parts.relation_store)
+        self.assertIs(forked.relation_visualization_exporter, parts.relation_visualization_exporter)
         self.assertIs(forked.reflection, custom_reflection)
         self.assertIs(forked.speaker, custom_speaker)
         self.assertIsNot(forked.distiller, parts.distiller)
@@ -323,6 +344,9 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertIs(fresh.rulebook, cli.parts.rulebook)
         self.assertIs(fresh.llm, cli.parts.llm)
         self.assertIs(fresh.token_counter, cli.parts.token_counter)
+        self.assertIs(fresh.session_store, cli.parts.session_store)
+        self.assertIs(fresh.relation_store, cli.parts.relation_store)
+        self.assertIs(fresh.relation_visualization_exporter, cli.parts.relation_visualization_exporter)
         self.assertIsNot(fresh.chat_engine, cli.parts.chat_engine)
 
     def test_runtime_dependency_overrides_merge_prefers_explicit_values(self):

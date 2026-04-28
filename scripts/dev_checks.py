@@ -37,6 +37,7 @@ def main() -> int:
     run_step("sync runtime mirror", [sys.executable, "scripts/sync_runtime_mirror.py"])
     run_step("check runtime mirror", [sys.executable, "scripts/check_runtime_mirror.py"])
     run_step("run smoke guardrails", [sys.executable, "-m", "unittest", *SMOKE_TEST_MODULES])
+    run_step("run mypy", [sys.executable, "-m", "mypy", "--config-file", "mypy.ini"])
     if args.smoke_only:
         print("[done] smoke checks passed")
         return 0

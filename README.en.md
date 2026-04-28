@@ -126,6 +126,12 @@ For local guardrails, use the bundled development check entrypoint:
 python scripts/dev_checks.py
 ```
 
+This now includes a targeted `mypy` pass for the runtime mirror and packaging guardrails:
+
+```bash
+python -m mypy --config-file mypy.ini
+```
+
 For a faster preflight pass that only runs mirror validation plus the runtime and packaging smoke checks:
 
 ```bash
