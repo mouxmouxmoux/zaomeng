@@ -31,7 +31,9 @@ class Config:
     """配置管理类"""
 
     SUPPORTED_PROVIDERS = (
+        "auto",
         "local-rule-engine",
+        "host-bridge",
         "openai",
         "openai-compatible",
         "anthropic",
@@ -40,11 +42,14 @@ class Config:
     
     DEFAULT_CONFIG = {
         "llm": {
-            "provider": "local-rule-engine",
-            "model": "local-rule-engine",
+            "provider": "auto",
+            "model": "",
             "temperature": 0.0,
             "max_tokens": 0,
             "base_url": "",
+            "host_bridge_url": "",
+            "host_bridge_token": "",
+            "host_bridge_token_env": "",
             "api_key": "",
             "api_key_env": "",
             "timeout_seconds": 120,
@@ -71,7 +76,7 @@ class Config:
             "max_characters": 10,
             "min_appearances": 3,
             "traits_max_count": 10,
-            "second_pass_mode": "auto",
+            "second_pass_mode": "llm-only",
             "refinement_batch_size": 4,
             "stage_window_size": 6,
             "llm_evidence_lines_per_stage": 6,
@@ -91,7 +96,7 @@ class Config:
             "max_speakers_per_turn": 4,
             "token_limit_per_turn": 500,
             "enable_cost_display": True,
-            "generation_mode": "auto",
+            "generation_mode": "llm-only",
             "enable_turn_interactions": True,
             "allow_character_silence": True,
             "min_reply_relevance": 4,
@@ -200,7 +205,7 @@ class Config:
     
     def _validate_config(self, config: Dict[str, Any]):
         """验证配置"""
-        provider = str(config.get("llm", {}).get("provider", "local-rule-engine")).strip().lower()
+        provider = str(config.get("llm", {}).get("provider", "auto")).strip().lower()
         if provider not in self.SUPPORTED_PROVIDERS:
             logger.warning(
                 "警告: 未识别的 llm.provider="

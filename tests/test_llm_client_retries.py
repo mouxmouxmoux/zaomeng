@@ -64,6 +64,34 @@ class LLMRetryTests(unittest.TestCase):
         )
         return LLMClient(Config(str(config_path)))
 
+    def _make_local_client(self) -> LLMClient:
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        config_path = Path(tmp.name) / "config.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "llm:",
+                    "  provider: local-rule-engine",
+                    "  model: local-rule-engine",
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        return LLMClient(Config(str(config_path)))
+
+    def test_default_config_prefers_auto_provider(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        config_path = Path(tmp.name) / "config.yaml"
+        config_path.write_text("", encoding="utf-8")
+
+        client = LLMClient(Config(str(config_path)))
+
+        self.assertEqual(client.llm_config.get("provider"), "auto")
+        self.assertEqual(client.provider_name(), "local-rule-engine")
+
     def test_post_json_retries_url_errors_then_succeeds(self):
         client = self._make_client()
         with patch(
@@ -93,6 +121,52 @@ class LLMRetryTests(unittest.TestCase):
 
         self.assertEqual(urlopen.call_count, 1)
         sleep.assert_not_called()
+
+    def test_local_provider_auto_promotes_to_openai_when_env_key_exists(self):
+        client = self._make_local_client()
+        with patch.dict("os.environ", {"OPENAI_API_KEY": "env-key"}, clear=False):
+            self.assertEqual(client.provider_name(), "openai")
+            self.assertTrue(client.is_generation_enabled())
+            self.assertEqual(client._resolve_model_name(client.provider_name()), "gpt-4.1-mini")
+
+    def test_local_provider_uses_env_model_for_ollama(self):
+        client = self._make_local_client()
+        with patch.dict("os.environ", {"OLLAMA_MODEL": "qwen2.5:14b"}, clear=False):
+            self.assertEqual(client.provider_name(), "ollama")
+            self.assertEqual(client._resolve_model_name("ollama"), "qwen2.5:14b")
+
+    def test_host_bridge_has_highest_auto_detection_priority(self):
+        client = self._make_local_client()
+        with patch.dict(
+            "os.environ",
+            {
+                "ZAOMENG_HOST_BRIDGE_URL": "http://127.0.0.1:8765",
+                "OPENAI_API_KEY": "env-key",
+            },
+            clear=False,
+        ):
+            self.assertEqual(client.provider_name(), "host-bridge")
+            self.assertEqual(client._resolve_model_name("host-bridge"), "host-default")
+            self.assertEqual(client._resolve_host_bridge_url(), "http://127.0.0.1:8765/chat/completions")
+
+    def test_host_bridge_parses_simple_bridge_payload(self):
+        client = self._make_local_client()
+        with patch.dict("os.environ", {"ZAOMENG_HOST_BRIDGE_URL": "http://127.0.0.1:8765"}, clear=False), patch(
+            "src.core.llm_client.request.urlopen",
+            return_value=_Response(
+                {
+                    "content": "桥接回复",
+                    "model": "host-llm",
+                    "prompt_tokens": 11,
+                    "completion_tokens": 7,
+                }
+            ),
+        ):
+            result = client.chat_completion([{"role": "user", "content": "你好"}])
+
+        self.assertEqual(result["provider"], "host-bridge")
+        self.assertEqual(result["content"], "桥接回复")
+        self.assertEqual(result["model"], "host-llm")
 
 
 if __name__ == "__main__":

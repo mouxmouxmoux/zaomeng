@@ -34,11 +34,20 @@ logger = logging.getLogger(__name__)
 
 
 class LLMClient:
-    """Provider-aware chat client with local-rule fallback."""
+    """Provider-aware chat client with automatic host/env detection."""
 
+    HOST_BRIDGE_ENV_URL = "ZAOMENG_HOST_BRIDGE_URL"
+    HOST_BRIDGE_ENV_MODEL = "ZAOMENG_HOST_BRIDGE_MODEL"
+    HOST_BRIDGE_ENV_TOKEN = "ZAOMENG_HOST_BRIDGE_TOKEN"
     DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
     DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com/v1"
     DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+    DEFAULT_HOST_BRIDGE_PATH = "/chat/completions"
+    DEFAULT_OPENAI_MODEL = "gpt-4.1-mini"
+    DEFAULT_ANTHROPIC_MODEL = "claude-3-5-haiku-latest"
+    DEFAULT_OLLAMA_MODEL = "qwen2.5:7b-instruct"
+    DEFAULT_HOST_BRIDGE_MODEL = "host-default"
+    AUTO_PROVIDER = "auto"
     LOCAL_PROVIDER = "local-rule-engine"
     DEFAULT_RETRY_STATUS_CODES = (408, 429, 500, 502, 503, 504)
 
@@ -150,8 +159,10 @@ class LLMClient:
         }
 
     def provider_name(self) -> str:
-        provider = str(self.llm_config.get("provider", self.LOCAL_PROVIDER)).strip().lower()
-        return provider or self.LOCAL_PROVIDER
+        configured = str(self.llm_config.get("provider", self.AUTO_PROVIDER)).strip().lower()
+        if configured and configured not in {self.AUTO_PROVIDER, self.LOCAL_PROVIDER}:
+            return configured
+        return self._infer_provider_from_environment()
 
     def is_generation_enabled(self) -> bool:
         return self.provider_name() != self.LOCAL_PROVIDER
@@ -183,7 +194,7 @@ class LLMClient:
         result = self._dispatch_chat_completion(
             provider=provider,
             messages=messages,
-            model=model or str(self.llm_config.get("model", "")).strip(),
+            model=self._resolve_model_name(provider, model),
             temperature=temperature,
             max_tokens=max_tokens,
         )
@@ -195,6 +206,42 @@ class LLMClient:
         usage["provider"] = provider
         usage["raw"] = result.get("raw", {})
         return usage
+
+    def _infer_provider_from_environment(self) -> str:
+        if self._host_bridge_url():
+            return "host-bridge"
+        if str(os.getenv("OPENAI_API_KEY", "")).strip():
+            base_url = str(os.getenv("OPENAI_BASE_URL", "")).strip()
+            return "openai-compatible" if base_url else "openai"
+        if str(os.getenv("ANTHROPIC_API_KEY", "")).strip():
+            return "anthropic"
+        if str(os.getenv("OLLAMA_MODEL", "")).strip():
+            return "ollama"
+        return self.LOCAL_PROVIDER
+
+    def _resolve_model_name(self, provider: str, requested_model: Optional[str] = None) -> str:
+        configured = str(requested_model or self.llm_config.get("model", "")).strip()
+        if configured and configured != self.LOCAL_PROVIDER:
+            return configured
+        env_overrides = {
+            "host-bridge": (self.HOST_BRIDGE_ENV_MODEL,),
+            "openai": ("OPENAI_MODEL",),
+            "openai-compatible": ("OPENAI_MODEL",),
+            "anthropic": ("ANTHROPIC_MODEL",),
+            "ollama": ("OLLAMA_MODEL",),
+        }
+        for env_name in env_overrides.get(provider, ()):
+            value = str(os.getenv(env_name, "")).strip()
+            if value:
+                return value
+        defaults = {
+            "host-bridge": self.DEFAULT_HOST_BRIDGE_MODEL,
+            "openai": self.DEFAULT_OPENAI_MODEL,
+            "openai-compatible": self.DEFAULT_OPENAI_MODEL,
+            "anthropic": self.DEFAULT_ANTHROPIC_MODEL,
+            "ollama": self.DEFAULT_OLLAMA_MODEL,
+        }
+        return defaults.get(provider, configured or self.LOCAL_PROVIDER)
 
     def _dispatch_chat_completion(
         self,
@@ -215,6 +262,13 @@ class LLMClient:
             )
         if provider == "anthropic":
             return self._chat_anthropic(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        if provider == "host-bridge":
+            return self._chat_host_bridge(
                 messages=messages,
                 model=model,
                 temperature=temperature,
@@ -355,6 +409,34 @@ class LLMClient:
             "raw": data,
         }
 
+    def _chat_host_bridge(
+        self,
+        *,
+        messages: List[Dict[str, str]],
+        model: str,
+        temperature: Optional[float],
+        max_tokens: Optional[int],
+    ) -> Dict[str, Any]:
+        url = self._resolve_host_bridge_url()
+        payload: Dict[str, Any] = {
+            "messages": messages,
+            "model": model,
+            "temperature": self._resolve_temperature(temperature),
+            "max_tokens": self._resolve_max_tokens(max_tokens, default=512),
+            "provider": "host-bridge",
+            "metadata": {
+                "source": "zaomeng",
+                "configured_provider": str(self.llm_config.get("provider", self.LOCAL_PROVIDER)).strip().lower(),
+            },
+        }
+        headers: Dict[str, str] = {}
+        token = self._resolve_host_bridge_token()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+            headers["X-Zaomeng-Bridge-Token"] = token
+        data = self._post_json(url=url, payload=payload, headers=headers or None)
+        return self._normalize_host_bridge_response(data, fallback_model=model)
+
     def _post_json(self, *, url: str, payload: Dict[str, Any], headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
         request_headers = {
             "Content-Type": "application/json",
@@ -455,6 +537,37 @@ class LLMClient:
         }
         return defaults.get(provider, self.DEFAULT_OPENAI_BASE_URL)
 
+    def _host_bridge_url(self) -> str:
+        configured = str(self.llm_config.get("host_bridge_url", "")).strip()
+        if configured:
+            return configured
+        configured_base = str(self.llm_config.get("base_url", "")).strip()
+        if str(self.llm_config.get("provider", "")).strip().lower() == "host-bridge" and configured_base:
+            return configured_base
+        return str(os.getenv(self.HOST_BRIDGE_ENV_URL, "")).strip()
+
+    def _resolve_host_bridge_url(self) -> str:
+        configured = self._host_bridge_url()
+        if not configured:
+            raise LLMRequestError(
+                "host-bridge provider 已启用，但未提供 bridge URL。请配置 llm.host_bridge_url 或环境变量 "
+                f"{self.HOST_BRIDGE_ENV_URL}。"
+            )
+        if "://" not in configured:
+            configured = f"http://{configured.lstrip('/')}"
+        if configured.endswith(("/chat/completions", "/api/chat", "/v1/chat/completions")):
+            return configured
+        return configured.rstrip("/") + self.DEFAULT_HOST_BRIDGE_PATH
+
+    def _resolve_host_bridge_token(self) -> str:
+        configured = str(self.llm_config.get("host_bridge_token", "")).strip()
+        if configured:
+            return configured
+        explicit_env = str(self.llm_config.get("host_bridge_token_env", "")).strip()
+        if explicit_env and os.getenv(explicit_env):
+            return str(os.getenv(explicit_env, "")).strip()
+        return str(os.getenv(self.HOST_BRIDGE_ENV_TOKEN, "")).strip()
+
     def _resolve_temperature(self, temperature: Optional[float]) -> float:
         if temperature is not None:
             return float(temperature)
@@ -465,6 +578,29 @@ class LLMClient:
             return int(max_tokens)
         configured = int(self.llm_config.get("max_tokens", default) or default)
         return configured
+
+    def _normalize_host_bridge_response(self, data: Dict[str, Any], fallback_model: str) -> Dict[str, Any]:
+        content = ""
+        if isinstance(data.get("content"), str):
+            content = str(data.get("content", "")).strip()
+        elif isinstance(data.get("message"), dict):
+            content = str(data.get("message", {}).get("content", "")).strip()
+        else:
+            choices = data.get("choices", [])
+            first = choices[0] if choices else {}
+            if isinstance(first, dict):
+                message = first.get("message", {})
+                if isinstance(message, dict):
+                    content = str(message.get("content", "")).strip()
+
+        usage = data.get("usage", {}) if isinstance(data.get("usage", {}), dict) else {}
+        return {
+            "content": content,
+            "model": str(data.get("model", fallback_model)).strip() or fallback_model,
+            "prompt_tokens": int(data.get("prompt_tokens", usage.get("prompt_tokens", 0)) or 0),
+            "completion_tokens": int(data.get("completion_tokens", usage.get("completion_tokens", 0)) or 0),
+            "raw": data,
+        }
 
     @staticmethod
     def _endpoint(base_url: str, suffix: str) -> str:

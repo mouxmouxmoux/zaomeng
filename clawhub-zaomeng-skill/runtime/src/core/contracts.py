@@ -24,6 +24,9 @@ class CostEstimator(Protocol):
     def is_generation_enabled(self) -> bool:
         ...
 
+    def get_cost_summary(self) -> Dict[str, Any]:
+        ...
+
 
 class CorrectionService(Protocol):
     def detect_ooc(self, profile: Dict[str, Any], message: str) -> Any:

@@ -110,9 +110,9 @@ class Speaker:
             self._opening_line(name, target_display, voice, relation_state, bool(similar)),
             self._taboo_line(context, voice),
             self._stance_line(context, voice, relation_state, topic),
+            self._drive_line(voice, topic),
             self._relation_line(target_display, voice, relation_state),
             self._memory_line(character_profile, voice, relation_hint),
-            self._drive_line(voice, topic),
         ]
         fallback_reply = self._compose_reply(segments, voice)
         return {
@@ -243,6 +243,7 @@ class Speaker:
         emotion_profile = dict(profile.get("emotion_profile", {})) if isinstance(profile.get("emotion_profile", {}), dict) else {}
         taboo_topics = [str(item).strip() for item in profile.get("taboo_topics", []) if str(item).strip()]
         forbidden_behaviors = [str(item).strip() for item in profile.get("forbidden_behaviors", []) if str(item).strip()]
+        key_bonds = [str(item).strip() for item in profile.get("key_bonds", []) if str(item).strip()]
         user_edits = [str(item).strip() for item in profile.get("user_edits", []) if str(item).strip()]
         notable_interactions = [str(item).strip() for item in profile.get("notable_interactions", []) if str(item).strip()]
         relationship_updates = [str(item).strip() for item in profile.get("relationship_updates", []) if str(item).strip()]
@@ -342,6 +343,7 @@ class Speaker:
             "emotion_profile": emotion_profile,
             "taboo_topics": taboo_topics[:6],
             "forbidden_behaviors": forbidden_behaviors[:6],
+            "key_bonds": key_bonds[:4],
             "user_edits": user_edits,
             "notable_interactions": notable_interactions,
             "relationship_updates": relationship_updates,
@@ -573,6 +575,11 @@ class Speaker:
         thinking_style = voice.get("thinking_style", "")
         primary = voice.get("primary_priority", "责任")
         action_style = voice.get("action_style", "")
+        if rules:
+            natural_rule = self._naturalize_rule(self._stable_pick(voice["name"], f"rule-{topic}", rules), topic, voice)
+            if natural_rule:
+                return natural_rule
+            rules = []
 
         if rules:
             rule = self._stable_pick(voice["name"], f"rule-{topic}", rules)
@@ -642,15 +649,79 @@ class Speaker:
         hidden_desire = str(voice.get("hidden_desire", "")).strip()
         role = str(voice.get("role", "")).strip()
         experience = str(voice.get("experience", "")).strip()
+        stress_response = str(voice.get("stress_response", "")).strip()
+        key_bonds = [str(item).strip() for item in voice.get("key_bonds", []) if str(item).strip()]
+        bond_hint = key_bonds[0] if key_bonds else ""
         if topic == "rest" and experience:
             return experience
+        if topic == "rest":
+            return ""
+        if topic == "care" and bond_hint:
+            return f"我在意的，不过就是{bond_hint}。"
+        if topic == "conflict" and stress_response:
+            return stress_response
         if topic in {"question", "judgment"} and hidden_desire:
-            return f"说到底，我最放不下的还是：{hidden_desire}。"
+            return self._naturalize_inner_drive(hidden_desire, voice)
+        if topic in {"question", "judgment"} and bond_hint:
+            return f"我在意的，不过就是{bond_hint}。"
         if topic in {"question", "judgment"} and goal:
-            return f"说到底，我真正想守的还是：{goal}。"
+            return self._naturalize_inner_drive(goal, voice)
+        if topic in {"question", "judgment"} and role and any(token in role for token in ("顶", "守", "护", "心", "管", "看")):
+            return self._naturalize_inner_drive(role, voice)
+        if topic in {"question", "judgment"}:
+            return ""
+        if topic == "general" and bond_hint:
+            return f"我在意的，不过就是{bond_hint}。"
+        if topic == "general" and goal:
+            return self._naturalize_inner_drive(goal, voice)
         if role:
             return f"我向来就是{role}，所以不会轻易改口。"
         return goal
+
+    def _naturalize_rule(self, rule: str, topic: str, voice: Dict[str, Any]) -> str:
+        text = str(rule or "").strip()
+        if not text:
+            return ""
+        primary = str(voice.get("primary_priority", "责任")).strip()
+        if any(token in text for token in ("底线", "越线", "不可", "不能", "休得")):
+            return "真碰到底线，我不会含糊。"
+        if any(token in text for token in ("先", "再", "之后", "后手", "虚实", "轻重")):
+            if topic == "conflict":
+                return "局面越紧，越得先把轻重和后路看明白。"
+            return "这事总得先看清轻重，再定怎么回。"
+        if any(token in text for token in ("规则", "规矩")):
+            return "规矩总得先看明白，免得一步走错。"
+        if any(token in text for token in ("自己人", "同伴", "护住", "护", "承住")):
+            return "牵到自己人，我就不能只算得失。"
+        if primary == "责任":
+            return "事情到了眼前，总得有人把这一层接住。"
+        if primary == "忠诚":
+            return "该认的情分，我不会临到头又往后退。"
+        if primary == "正义":
+            return "是非若站不稳，别的话都说不长。"
+        if primary == "智慧":
+            return "我更想先把局势看透，再决定往哪边落子。"
+        return ""
+
+    @staticmethod
+    def _naturalize_inner_drive(text: str, voice: Dict[str, Any]) -> str:
+        desire = str(text or "").strip().strip("。；？!?")
+        if not desire:
+            return ""
+        if any(token in desire for token in ("想", "守", "护")):
+            paraphrased = desire
+            for prefix in ("想把", "想守住", "想护住", "想要"):
+                if paraphrased.startswith(prefix):
+                    paraphrased = paraphrased[len(prefix) :]
+                    break
+            paraphrased = paraphrased.replace("真正放不下的", "真在意的")
+            paraphrased = paraphrased or desire
+            return f"说到底，我只是想{paraphrased}。"
+        if len(desire) <= 14:
+            return f"我在意的，不过就是{desire}。"
+        if voice.get("restrained"):
+            return "说到底，我总有自己不肯松手的那一层。"
+        return f"真要说我心里压着什么，大概就是{desire}。"
 
     def _compose_reply(self, segments: List[str], voice: Dict[str, Any]) -> str:
         cleaned = []
@@ -667,7 +738,7 @@ class Speaker:
 
         cadence = voice.get("speech_habits", {}).get("cadence", "medium")
         if cadence == "short":
-            cleaned = cleaned[:2]
+            cleaned = cleaned[:3]
         elif cadence == "medium":
             cleaned = cleaned[:3]
         else:

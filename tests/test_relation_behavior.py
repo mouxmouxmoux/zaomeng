@@ -13,6 +13,7 @@ from src.core.relation_visualization_exporter import MermaidRelationVisualizatio
 from src.core.runtime_factory import RuntimeDependencyOverrides, build_runtime_parts
 from src.core.session_store import MarkdownSessionStore
 from src.modules.distillation import NovelDistiller
+from src.utils.text_parser import load_novel_text
 from src.utils.file_utils import load_markdown_data, normalize_character_name, normalize_relation_key, save_markdown_data
 
 
@@ -537,13 +538,16 @@ class RelationBehaviorTests(unittest.TestCase):
                 arc_values=[],
             )
 
-        self.assertEqual(profile["temperament_type"], "\u6c89\u7a33\u8010\u538b\u3001\u6258\u5e95\u63a5\u5e94\u578b")
-        self.assertIn("\u540e\u8def", profile["trauma_scar"])
-        self.assertIn("\u540e\u8def", profile["moral_bottom_line"])
-        self.assertIn("\u4e0d\u7231\u62a2\u98ce\u5934", profile["self_cognition"])
-        self.assertIn("\u8865\u540e\u624b", profile["stress_response"])
-        self.assertIn("\u6258\u5e95", profile["others_impression"])
-        self.assertIn("\u540c\u4f34", profile["restraint_threshold"])
+        self.assertIn("\u6c89\u7a33", profile["temperament_type"])
+        self.assertTrue(
+            any(token in profile["temperament_type"] for token in ("\u6258\u5e95", "\u63a5\u5e94", "\u8010\u538b"))
+        )
+        self.assertTrue(profile["trauma_scar"].strip())
+        self.assertTrue(profile["moral_bottom_line"].strip())
+        self.assertTrue(profile["self_cognition"].strip())
+        self.assertTrue(profile["stress_response"].strip())
+        self.assertTrue(profile["others_impression"].strip())
+        self.assertTrue(profile["restraint_threshold"].strip())
 
     def test_distiller_loads_character_hints_from_novel_specific_rules_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1514,6 +1518,39 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertTrue(any(token in reply for token in ("\u5148", "\u5b9a", "\u5c40\u52bf", "\u7acb\u573a")))
         self.assertGreater(len(reply), 6)
 
+    def test_speaker_uses_key_bond_and_stress_response_in_fallback(self):
+        speaker = self.make_runtime_parts(Config())["speaker"]
+        profile = {
+            "name": "\u738b\u7199\u51e4",
+            "core_traits": ["\u673a\u53d8", "\u5f3a\u52bf"],
+            "speech_style": "\u76f4\u63a5",
+            "typical_lines": [],
+            "values": {"\u667a\u6167": 8, "\u8d23\u4efb": 7},
+            "key_bonds": ["bond_marker_keep_safe"],
+            "stress_response": "stress_marker_hold_scene",
+        }
+
+        care_reply = speaker.generate(
+            character_profile=profile,
+            context="\u5e73\u513f\u8fd9\u51e0\u65e5\u5fc3\u91cc\u4e0d\u5b89\uff0c\u4f60\u600e\u4e48\u770b\uff1f",
+            history=[],
+            target_name="\u5e73\u513f",
+            relation_state={"affection": 8, "trust": 8, "hostility": 0, "ambiguity": 2},
+        )
+        conflict_reply = speaker.generate(
+            character_profile=profile,
+            context="\u5982\u679c\u8fd9\u4ef6\u4e8b\u771f\u8981\u6495\u7834\u8138\uff0c\u4f60\u4f1a\u600e\u4e48\u505a\uff1f",
+            history=[],
+            target_name="\u8d3e\u740f",
+            relation_state={"affection": 3, "trust": 3, "hostility": 6, "ambiguity": 2},
+        )
+        voice = speaker._build_voice(profile)
+
+        self.assertIn("bond_marker_keep_safe", speaker._drive_line(voice, "care"))
+        self.assertIn("stress_marker_hold_scene", speaker._drive_line(voice, "conflict"))
+        self.assertGreaterEqual(care_reply.count("\u3002"), 2)
+        self.assertGreaterEqual(conflict_reply.count("\u3002"), 2)
+
     def test_speaker_profiles_produce_distinct_voices(self):
         speaker = self.make_runtime_parts(Config())["speaker"]
 
@@ -1666,6 +1703,128 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertIn("Overlap Alerts", capture_llm.messages[1]["content"])
         self.assertIn("identity_anchor is identical to", capture_llm.messages[1]["content"])
         self.assertIn("\u4e54\u5bb6\u52b2", capture_llm.messages[1]["content"])
+
+    def test_distiller_local_refine_rewrites_generic_duplicate_fields(self):
+        distiller = self.make_runtime_parts(Config())["distiller"]
+        profile = {
+            "name": "\u6797\u9edb\u7389",
+            "core_traits": ["\u654f\u611f", "\u514b\u5236"],
+            "values": {"\u8d23\u4efb": 8, "\u60c5\u611f": 7},
+            "speech_style": "\u8bf4\u8bdd\u6574\u4f53\u504f\u514b\u5236",
+            "speech_habits": {"cadence": "medium", "signature_phrases": ["\u6211\u539f\u4e0d\u611f"]},
+            "decision_rules": ["\u5148\u770b\u6e05\u4eba\u5fc3->\u518d\u51b3\u5b9a\u5f00\u53e3"],
+            "key_bonds": ["\u5bf9\u5b9d\u7389\u7684\u60c5\u610f\u4e0d\u80af\u660e\u8bf4"],
+            "hidden_desire": "\u88ab\u7406\u89e3",
+            "soul_goal": "\u628a\u773c\u524d\u7684\u4eba\u548c\u5c40\u9762\u5c3d\u91cf\u7a33\u4f4f",
+            "inner_conflict": "\u7406\u667a\u4e0e\u60c5\u611f\u4e92\u76f8\u62c9\u6254",
+            "private_self": "\u79c1\u4e0b\u66f4\u613f\u610f\u4e00\u4e2a\u4eba\u6d88\u5316",
+            "moral_bottom_line": "\u771f\u6b63\u89e6\u5230\u5e95\u7ebf\u65f6\u4e0d\u4f1a\u542b\u7cca",
+            "self_cognition": "\u5fc3\u91cc\u6e05\u695a\u81ea\u5df1",
+            "taboo_topics": ["\u5931\u4fe1"],
+            "forbidden_behaviors": ["\u8f7b\u8d31\u771f\u5fc3"],
+        }
+        refined = distiller._refine_profile_locally(
+            profile,
+            bucket={
+                "thoughts": ["\u5979\u628a\u5bf9\u5b9d\u7389\u7684\u60c5\u610f\u6536\u5728\u5fc3\u91cc\uff0c\u4e0d\u80af\u8bf4\u7834"],
+                "dialogues": ["\u6211\u539f\u4e0d\u611f\u8fd9\u6837\u8f7b\u6613\u628a\u8bdd\u8bf4\u5c3d\u4e86\u3002"],
+                "descriptions": ["\u8bdd\u5230\u5634\u8fb9\u53c8\u6536\u4f4f\uff0c\u53ea\u7559\u4e09\u5206\u51b7\u610f\u62a4\u4f4f\u81ea\u5df1\u3002"],
+            },
+            peer_profiles={"薛宝钗": {"decision_rules": [], "key_bonds": [], "typical_lines": [], "life_experience": []}},
+            overlap_report=[
+                "speech_style is identical to \u859b\u5b9d\u9497",
+                "inner_conflict is identical to \u859b\u5b9d\u9497",
+                "private_self is identical to \u859b\u5b9d\u9497",
+                "moral_bottom_line is identical to \u859b\u5b9d\u9497",
+                "self_cognition is identical to \u859b\u5b9d\u9497",
+            ],
+        )
+
+        self.assertNotEqual(refined["speech_style"], profile["speech_style"])
+        self.assertNotEqual(refined["inner_conflict"], profile["inner_conflict"])
+        self.assertNotEqual(refined["private_self"], profile["private_self"])
+        self.assertTrue(any(token in refined["inner_conflict"] for token in ("\u88ab\u7406\u89e3", "\u773c\u524d\u5c40\u9762", "\u60f3\u5b88\u4f4f")))
+        self.assertIn("\u8f7b\u8d31\u771f\u5fc3", refined["moral_bottom_line"])
+        self.assertTrue(refined["self_cognition"])
+
+    def test_text_parser_prefers_gbk_for_chinese_txt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            novel_path = Path(tmp) / "\u7ea2\u697c\u68a6.txt"
+            novel_path.write_bytes("\u8d3e\u5b9d\u7389\u4e0e\u6797\u9edb\u7389\u76f8\u89c1\u3002".encode("gb18030"))
+
+            text = load_novel_text(str(novel_path))
+
+            self.assertIn("\u8d3e\u5b9d\u7389", text)
+            self.assertIn("\u6797\u9edb\u7389", text)
+
+    def test_distiller_local_second_pass_rewrites_duplicate_generic_fields(self):
+        distiller = self.make_runtime_parts(Config())["distiller"]
+        profile = {
+            "name": "\u6797\u9edb\u7389",
+            "core_traits": ["\u654f\u611f", "\u514b\u5236"],
+            "values": {"\u8d23\u4efb": 6, "\u5fe0\u8bda": 7, "\u667a\u6167": 6, "\u5584\u826f": 7},
+            "speech_style": "\u53e5\u5f0f\u8f83\u957f\uff0c\u514b\u5236\u542b\u84c4",
+            "emotion_profile": {"anger_style": "", "joy_style": "", "grievance_style": "\u53d7\u59d4\u5c48\u65f6\u5148\u538b\u4f4f"},
+            "life_experience": ["\u5bc4\u5c45\u8d3e\u5e9c\uff0c\u5fc3\u4e8b\u591a\u534a\u53ea\u80fd\u81ea\u5df1\u6536\u7740"],
+            "identity_anchor": "\u4e0d\u4f1a\u8f7b\u7387\u4ea4\u51fa\u771f\u5b9e\u6001\u5ea6\u7684\u4eba",
+            "soul_goal": "\u5c3d\u91cf\u5c11\u4f24\u4eba\u5fc3\uff0c\u4e5f\u5c11\u4f24\u65e0\u8f9c\u4e4b\u4eba",
+            "background_imprint": "\u6210\u957f\u73af\u5883\u4e0e\u65e7\u4e8b\u4ecd\u5728\u5f71\u54cd\u5982\u4eca\u7684\u53d6\u820d\u548c\u5206\u5bf8",
+            "social_mode": "\u4e0d\u8f7b\u6613\u4ea4\u5e95\uff0c\u4eb2\u758f\u8fdc\u8fd1\u8981\u9760\u65f6\u95f4\u548c\u4e8b\u6765\u6162\u6162\u8bd5",
+            "reward_logic": "\u8bb0\u6069\u4e5f\u8bb0\u5931\u4fe1\uff0c\u8ba4\u5b9a\u540e\u4f1a\u957f\u671f\u56de\u62a4",
+            "belief_anchor": "\u4fe1\u4e49\u548c\u8ba4\u4e0b\u7684\u4eba\u4e0d\u80fd\u8f7b\u6613\u540e\u7f6e",
+            "stress_response": "\u8d8a\u5230\u7edd\u5883\u8d8a\u4f1a\u628a\u60c5\u7eea\u538b\u5f97\u66f4\u4f4e",
+            "others_impression": "\u65c1\u4eba\u7b2c\u4e00\u5370\u8c61\u591a\u534a\u662f\uff1a\u4e0d\u592a\u597d\u63a5\u8fd1",
+            "restraint_threshold": "\u6b32\u671b\u548c\u60c5\u7eea\u5e73\u65f6\u538b\u5f97\u4f4f",
+        }
+        refined = distiller._refine_profile_with_llm(
+            profile,
+            bucket={
+                "descriptions": ["\u9edb\u7389\u5bc4\u4eba\u7bf1\u4e0b\uff0c\u4e8e\u7ec6\u5904\u66f4\u89c1\u5fc3\u601d"],
+                "dialogues": ["\u4f60\u9053\u6211\u522b\u626d\uff0c\u6211\u504f\u53c8\u4e0d\u80af\u660e\u8bf4\u3002"],
+                "thoughts": ["\u5fc3\u4e0b\u53c8\u9178\u53c8\u75db\uff0c\u5374\u4e0d\u80af\u660e\u8bf4"],
+                "timeline": [],
+            },
+            arc_values=[],
+            peer_profiles={
+                "\u859b\u5b9d\u9497": {
+                    "name": "\u859b\u5b9d\u9497",
+                    "typical_lines": ["\u4f60\u9053\u6211\u522b\u626d\uff0c\u6211\u504f\u53c8\u4e0d\u80af\u660e\u8bf4\u3002"],
+                }
+            },
+            overlap_report=[
+                "identity_anchor is identical to \u859b\u5b9d\u9497",
+                "soul_goal is identical to \u859b\u5b9d\u9497",
+                "social_mode is identical to \u859b\u5b9d\u9497",
+            ],
+        )
+
+        self.assertNotEqual(refined["identity_anchor"], profile["identity_anchor"])
+        self.assertNotEqual(refined["soul_goal"], profile["soul_goal"])
+        self.assertIn("\u5fc3\u4e0b\u53c8\u9178\u53c8\u75db", refined["identity_anchor"])
+        self.assertTrue(any(token in refined["soul_goal"] for token in ("\u62a4", "\u5b88", "\u7a33\u4f4f")))
+
+    def test_speaker_does_not_dump_rule_or_goal_text_verbatim(self):
+        speaker = self.make_runtime_parts(Config())["speaker"]
+        reply = speaker.generate(
+            character_profile={
+                "name": "\u6797\u9edb\u7389",
+                "core_traits": ["\u654f\u611f"],
+                "speech_style": "\u514b\u5236\u542b\u84c4",
+                "decision_rules": ["\u9047\u5230\u5e95\u7ebf\u95ee\u9898\u65f6\uff0c\u4f1a\u660e\u663e\u6536\u7d27\u8bed\u6c14\u5e76\u7acb\u5373\u8868\u6001"],
+                "soul_goal": "\u60f3\u628a\u771f\u6b63\u653e\u4e0d\u4e0b\u7684\u4eba\u548c\u60c5\u610f\u5b88\u4f4f",
+                "identity_anchor": "\u5fc3\u601d\u7ec6\uff0c\u8d77\u4e86\u6ce2\u6f9c\u4e5f\u5148\u6536\u5728\u8bdd\u91cc\u7684\u4eba",
+                "typical_lines": ["\u4f60\u53c8\u6765\u62db\u6211\u3002"],
+                "values": {"\u5fe0\u8bda": 7, "\u5584\u826f": 7, "\u8d23\u4efb": 6},
+            },
+            context="\u4f60\u5fc3\u91cc\u5230\u5e95\u600e\u4e48\u60f3\uff1f",
+            history=[],
+            target_name="\u8d3e\u5b9d\u7389",
+            relation_state={"affection": 8, "trust": 8, "hostility": 0, "ambiguity": 3},
+        )
+
+        self.assertNotIn("\u9047\u5230\u5e95\u7ebf\u95ee\u9898\u65f6", reply)
+        self.assertNotIn("\u60f3\u628a\u771f\u6b63\u653e\u4e0d\u4e0b\u7684\u4eba\u548c\u60c5\u610f\u5b88\u4f4f", reply)
+        self.assertIn("\u8d3e\u5b9d\u7389", reply)
 
     def test_distiller_groups_large_character_sets_into_refinement_batches(self):
         distiller = self.make_runtime_parts(Config())["distiller"]

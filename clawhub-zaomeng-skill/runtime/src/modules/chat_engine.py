@@ -11,13 +11,12 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
-from src.core.contracts import RelationStore, RuntimePartsLike, SessionStore
+from src.core.contracts import CostEstimator, RelationStore, RuntimePartsLike, SessionStore
 from src.core.exceptions import ZaomengError
 from src.core.path_provider import PathProvider
 from src.core.relation_store import MarkdownRelationStore
 from src.core.rulebook import RuleBook
 from src.core.session_store import MarkdownSessionStore
-from src.core.llm_client import LLMClient
 from src.modules.distillation import NovelDistiller
 from src.modules.reflection import ReflectionEngine
 from src.modules.speaker import Speaker
@@ -44,7 +43,7 @@ class ChatEngine:
         self,
         config: Optional[Config] = None,
         *,
-        llm: Optional[LLMClient] = None,
+        llm: Optional[CostEstimator] = None,
         reflection: Optional[ReflectionEngine] = None,
         speaker: Optional[Speaker] = None,
         distiller: Optional[NovelDistiller] = None,

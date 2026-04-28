@@ -4,10 +4,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import Optional
+from typing import Any, Optional
 
 from src.core.config import Config
-from src.core.contracts import RelationStore, RelationVisualizationExporter, SessionStore
+from src.core.contracts import CostEstimator, RelationStore, RelationVisualizationExporter, SessionStore
+from src.core.host_llm_adapter import HostProvidedLLM
 from src.core.llm_client import LLMClient
 from src.core.path_provider import PathProvider
 from src.core.relation_store import MarkdownRelationStore
@@ -46,7 +47,7 @@ class RuntimeParts:
     config: Config
     path_provider: PathProvider
     rulebook: RuleBook
-    llm: LLMClient
+    llm: CostEstimator
     token_counter: TokenCounter
     _session_store: Optional[SessionStore] = None
     _relation_store: Optional[RelationStore] = None
@@ -198,7 +199,7 @@ class RuntimeParts:
 class RuntimeDependencyOverrides:
     path_provider: Optional[PathProvider] = None
     rulebook: Optional[RuleBook] = None
-    llm: Optional[LLMClient] = None
+    llm: Optional[CostEstimator] = None
     token_counter: Optional[TokenCounter] = None
     session_store: Optional[SessionStore] = None
     relation_store: Optional[RelationStore] = None
@@ -226,13 +227,25 @@ def build_runtime_parts(
     config: Optional[Config] = None,
     *,
     overrides: Optional[RuntimeDependencyOverrides] = None,
+    host_context: Any = None,
+    host_llm_provider_name: str = "host-provided",
+    host_llm_model_name: str = "host-default",
 ) -> RuntimeParts:
     resolved_config = config or Config()
     resolved_overrides = overrides or RuntimeDependencyOverrides()
     path_provider = resolved_overrides.path_provider or PathProvider(resolved_config)
     rulebook = resolved_overrides.rulebook or RuleBook(resolved_config, path_provider=path_provider)
-    llm = resolved_overrides.llm or LLMClient(resolved_config)
     token_counter = resolved_overrides.token_counter or TokenCounter()
+    llm = resolved_overrides.llm
+    if llm is None and host_context is not None:
+        llm = HostProvidedLLM.from_host_context(
+            host_context,
+            provider_name=host_llm_provider_name,
+            model_name=host_llm_model_name,
+            token_counter=token_counter.count,
+        )
+    if llm is None:
+        llm = LLMClient(resolved_config)
     parts = RuntimeParts(
         config=resolved_config,
         path_provider=path_provider,

@@ -51,6 +51,7 @@ Tasks:
 14. Keep `include` and `runtime_owned` under the same default mirror/report path so wrapper drift is caught by the standard runtime sync flow.
 15. Extract markdown-backed session and relation stores behind repository-style interfaces so chat and relation extraction stop persisting those assets directly.
 16. Route relation graph visualization export through an injected exporter so extraction and rendering can evolve independently.
+17. Keep removing duplicated expression logic so runtime wrappers stay thin and shared modules remain the only place that owns behavior.
 
 ## P2: Reliability And Developer Experience
 
@@ -65,6 +66,28 @@ Tasks:
 2. Add targeted retries for LLM requests with exponential backoff.
 3. Add lightweight read-through caching for config, rules, and profile bundles.
 4. Expand unit coverage and wire automated test execution into CI.
+5. Add explicit LLM capability guards beyond CLI entrypoints so direct internal callers cannot silently bypass LLM-first preflight.
+
+## P2.5: LLM-First Runtime And Persona Quality
+
+Status: in progress
+
+Goals:
+- Make LLM availability a hard prerequisite for real skill workflows.
+- Remove remaining template-heavy expression paths.
+- Keep persona fields differentiated without relying on large authored rule corpora.
+
+Tasks:
+1. Continue shrinking rule-authored Chinese prose so `rules/*.md` keep routing, extraction, and boundary signals only.
+2. Reduce `src/modules/speaker.py` fallback output into a minimal constraint sketch instead of a polished pseudo-final reply.
+3. Move more final phrasing responsibility to the LLM rewrite/generation layer and keep fallback logic strictly structural.
+4. Replace remaining long default prose in `src/modules/distillation.py` with shorter evidence-driven labels and heuristics.
+5. Audit persona field generation for overlap risk and keep tests focused on distinction, evidence coverage, and non-empty structured output rather than exact canned wording.
+6. Keep host-provided LLM reuse as the first path in embedded runtimes and avoid duplicate model configuration when running inside OpenClaw, Hermes, or similar hosts.
+7. Add stronger regression coverage using real Chinese novel samples to check profile completeness, cross-character differentiation, relation extraction quality, and chat persona fidelity.
+8. Ensure the skill refuses to start distillation/chat/extract flows when no generation-capable LLM is available, with a clear configuration hint instead of any rule-mode fallback.
+9. Revisit speaker memory/relation guidance packing so prompts carry high-signal persona constraints without dumping redundant field text into the generation context.
+10. Keep packaging docs and skill docs aligned with the LLM-first contract so user-facing guidance never suggests a "continue in rule mode" path.
 
 ## P3: Scale-Oriented Enhancements
 

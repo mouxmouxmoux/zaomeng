@@ -2,13 +2,13 @@
 
 `zaomeng-skill` 是一个面向中文小说人物蒸馏、关系抽取、角色单聊与群聊的技能包。
 
-它不是普通陪聊模板，而是一套“先蒸馏，再按人物档案说话”的本地规则型工作流。
+它不是普通陪聊模板，而是一套“先蒸馏，再按人物档案说话”的 **LLM-first** 工作流。
 
 更准确地说：
 
 - `zaomeng` 负责人物蒸馏、关系抽取、人格导航、持久记忆与 OOC 约束
-- 默认情况下，`zaomeng` 仍可作为“人格与约束层”使用
-- 如果配置了真实 LLM，`zaomeng chat` 现在也可以在人物/关系/记忆约束下直接生成更自然的最终台词
+- 蒸馏、抽取和聊天都要求存在可生成 LLM；规则文件主要负责提取信号、边界约束和路由辅助
+- 如果宿主已经提供模型能力，优先直接复用宿主 LLM，而不是要求再单独配一套 runtime 模型
 
 许可证：`MIT-0`（MIT No Attribution）
 
@@ -22,16 +22,30 @@
 - 修复 Windows CI 下的路径解析与控制台编码问题
 - 继续支持真实 LLM 聊天生成、群聊顺序互动、以及低相关角色按需沉默
 
-## 对话生成模式
+## 对话生成
 
-你现在可以按两种方式使用聊天：
+当前聊天、蒸馏和关系抽取都走 **LLM-first** 路径：
 
-- `local-rule-engine`
-  完全本地规则生成，不调用外部模型。
-- 真实 LLM
-  由 `zaomeng` 先整理人物约束、关系约束、记忆约束，再调用外部模型生成最终回复。
+- `zaomeng` 先整理人物约束、关系约束、记忆约束与模式约束
+- 再由可生成 LLM 负责最终表达
+- 群聊里后发言角色可以看到本轮已生成的前文
 
-配置示例：
+能力探测顺序：
+
+- 优先复用宿主通过 `HostContext` 注入的 LLM
+- 其次使用环境变量或 `runtime/config.yaml` 中可用的模型配置
+- 如果拿不到可生成 LLM，就直接中止工作流并提示补齐配置
+
+宿主接入示例：
+
+```python
+from src.core.runtime_factory import HostProvidedLLM, RuntimeDependencyOverrides, build_runtime_parts
+
+host_llm = HostProvidedLLM.from_host_context(context, provider_name="openclaw-host")
+parts = build_runtime_parts(overrides=RuntimeDependencyOverrides(llm=host_llm))
+```
+
+CLI 配置示例：
 
 ```yaml
 llm:
@@ -44,7 +58,7 @@ llm:
   max_tokens: 300
 
 chat_engine:
-  generation_mode: "auto"          # auto / rule-only / llm-only
+  generation_mode: "llm-only"
   enable_turn_interactions: true
   allow_character_silence: true
   min_reply_relevance: 4

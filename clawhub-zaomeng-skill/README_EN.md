@@ -2,13 +2,13 @@
 
 `zaomeng-skill` is a skill package for Chinese novel character distillation, relationship extraction, one-on-one roleplay, and group character chat.
 
-It is not a generic chat template. It is a local rule-based workflow built around one principle: distill first, then let characters speak according to their profiles.
+It is not a generic chat template. It is an **LLM-first** workflow built around one principle: distill first, then let characters speak according to their profiles.
 
 More precisely:
 
 - `zaomeng` is responsible for character distillation, relationship extraction, persona navigation, persistent memory, and OOC constraints
-- by default, `zaomeng` can still be used purely as the persona-and-constraint layer
-- when a real LLM is configured, `zaomeng chat` can now also generate the final natural reply under persona, relation, and memory constraints
+- distillation, extraction, and chat all require a generation-capable LLM; rules now mainly provide extraction signals, routing hints, and guardrails
+- when the host already provides an LLM, reuse that host capability first instead of asking for a separate runtime model setup
 
 License: `MIT-0` (MIT No Attribution)
 
@@ -22,14 +22,28 @@ The current release line is `3.2.0`. The main changes are:
 - Windows CI path resolution and console encoding issues are fixed
 - real LLM chat generation, ordered group-chat interactions, and optional silence for low-relevance characters remain supported
 
-## Dialogue Generation Modes
+## Dialogue Generation
 
-You can now use chat in two ways:
+Chat, distillation, and relationship extraction now follow the same **LLM-first** path:
 
-- `local-rule-engine`
-  Fully local rule-based generation with no external model call.
-- Real LLM
-  `zaomeng` first prepares persona, relation, and memory constraints, then calls an external model to produce the final reply.
+- `zaomeng` prepares persona, relation, memory, and mode constraints
+- a generation-capable LLM produces the final reply
+- in group chat, later speakers can see replies already produced earlier in the same turn
+
+Capability resolution order:
+
+- reuse an in-process host LLM provided through `HostContext`
+- otherwise use environment variables or `runtime/config.yaml`
+- if no generation-capable LLM is available, stop the workflow and ask for model configuration instead of falling back to rule-only chat
+
+Minimal host integration example:
+
+```python
+from src.core.runtime_factory import HostProvidedLLM, RuntimeDependencyOverrides, build_runtime_parts
+
+host_llm = HostProvidedLLM.from_host_context(context, provider_name="openclaw-host")
+parts = build_runtime_parts(overrides=RuntimeDependencyOverrides(llm=host_llm))
+```
 
 Example configuration:
 
@@ -44,7 +58,7 @@ llm:
   max_tokens: 300
 
 chat_engine:
-  generation_mode: "auto"          # auto / rule-only / llm-only
+  generation_mode: "llm-only"
   enable_turn_interactions: true
   allow_character_silence: true
   min_reply_relevance: 4

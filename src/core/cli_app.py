@@ -11,14 +11,16 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
 from src.core.config import Config
+from src.core.host_llm_adapter import HostProvidedLLM
 from src.core.logging_utils import setup_logging
-from src.core.runtime_factory import RuntimeParts, build_runtime_parts
+from src.core.runtime_factory import RuntimeDependencyOverrides, RuntimeParts, build_runtime_parts
+from src.core.exceptions import ZaomengError
 from src.modules.chat_engine import ChatEngine  # Backward-compatible patch target for tests/tools.
 from src.utils.file_utils import (
     load_text_argument,
@@ -87,19 +89,42 @@ class ZaomengCLI:
         *,
         config: Optional[Config] = None,
         runtime_parts_builder: Callable[[Optional[Config]], RuntimeParts] = build_runtime_parts,
+        host_context: Any = None,
     ) -> None:
         self._runtime_parts_builder = runtime_parts_builder
-        self.parts = self._runtime_parts_builder(config or Config())
+        self._host_context = host_context
+        self.parts = self._build_runtime_parts(config or Config())
         self.config = self.parts.config
         setup_logging(self.config)
         self.path_provider = self.parts.path_provider
         self.rulebook = self.parts.rulebook
         self.parser = self._create_parser()
 
-    def _fresh_runtime_parts(self) -> RuntimeParts:
+    @classmethod
+    def from_host_context(
+        cls,
+        context: Any,
+        *,
+        config: Optional[Config] = None,
+        runtime_parts_builder: Callable[[Optional[Config]], RuntimeParts] = build_runtime_parts,
+    ) -> "ZaomengCLI":
+        return cls(config=config, runtime_parts_builder=runtime_parts_builder, host_context=context)
+
+    def _build_runtime_parts(self, config: Config) -> RuntimeParts:
+        if self._host_context is None:
+            return self._runtime_parts_builder(config)
         if self._runtime_parts_builder is build_runtime_parts:
+            return self._runtime_parts_builder(config, host_context=self._host_context)
+        host_llm = HostProvidedLLM.from_host_context(self._host_context)
+        return self._runtime_parts_builder(
+            config,
+            overrides=RuntimeDependencyOverrides(llm=host_llm),
+        )
+
+    def _fresh_runtime_parts(self) -> RuntimeParts:
+        if self._host_context is None and self._runtime_parts_builder is build_runtime_parts:
             return self.parts.fork()
-        return self._runtime_parts_builder(self.config)
+        return self._build_runtime_parts(self.config)
 
     def _build_chat_engine(self) -> ChatEngine:
         parts = self._fresh_runtime_parts()
@@ -254,7 +279,9 @@ class ZaomengCLI:
             print("Confirmation: skipped via --force")
         else:
             print("This command is confirmation-gated. Use --force only after confirming with the user.")
-        distiller = self._fresh_runtime_parts().distiller
+        parts = self._fresh_runtime_parts()
+        self._require_generation_llm(parts, "distill")
+        distiller = parts.distiller
 
         if not args.force:
             cost_estimate = distiller.estimate_cost(args.novel)
@@ -277,6 +304,7 @@ class ZaomengCLI:
     def _handle_chat(self, args: argparse.Namespace) -> None:
         print("=== Chat Engine ===")
         engine = self._build_chat_engine()
+        self._require_generation_llm(engine, "chat")
         session: Optional[dict] = None
 
         if args.session:
@@ -588,7 +616,9 @@ class ZaomengCLI:
             print("Confirmation: skipped via --force")
         else:
             print("This command is confirmation-gated. Use --force only after confirming with the user.")
-        extractor = self._fresh_runtime_parts().extractor
+        parts = self._fresh_runtime_parts()
+        self._require_generation_llm(parts, "extract")
+        extractor = parts.extractor
 
         if not args.force:
             cost_estimate = extractor.estimate_cost(args.novel)
@@ -605,6 +635,22 @@ class ZaomengCLI:
         print(f"\nDone. Extracted {len(result)} relationships:")
         for rel_key in list(result.keys())[:5]:
             print(f"  - {rel_key}")
+
+    @staticmethod
+    def _require_generation_llm(target: Any, operation: str) -> None:
+        llm = getattr(target, "llm", None)
+        if llm is None and hasattr(target, "create_chat_engine"):
+            llm = getattr(target, "llm", None)
+        if llm is None:
+            llm = getattr(target, "parts", None)
+        if llm is not None and hasattr(llm, "llm"):
+            llm = llm.llm
+        if llm is None or not getattr(llm, "is_generation_enabled", lambda: False)():
+            raise ZaomengError(
+                f"{operation} now requires an available LLM. "
+                "Reuse the host model when running inside OpenClaw/Hermes/other agents, "
+                "or configure OpenAI/Anthropic/Ollama for direct CLI runs."
+            )
 
 
 def main() -> None:

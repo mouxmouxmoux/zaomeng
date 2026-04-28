@@ -21,18 +21,33 @@
 - 自然语言优先：先蒸馏，再通过自然语言进入 `act` / `observe`
 - skill 内嵌最小运行子集：`clawhub-zaomeng-skill` 已内置可运行的最小运行时
 - 约束分层：`output_schema.md` 管格式，`style_differ.md` 管去同质化，`logic_constraint.md` 管防 OOC
-- 聊天分层：`zaomeng` 继续负责人物约束、关系约束、记忆约束；若配置真实 LLM，则由 LLM 负责把回复说得更自然
+- LLM-first：蒸馏、关系抽取和聊天都以可生成 LLM 为前提，规则文件只负责提取信号、边界约束和路由辅助
+- 宿主优先：若 OpenClaw / Hermes / Agent 宿主已在同进程内提供模型能力，优先通过 `HostContext` 复用宿主 LLM，而不是要求再单独配置一套 `runtime/config.yaml`
 
 ## 对话生成
 
-当前聊天支持两种生成路径：
+当前聊天、蒸馏和关系抽取都走 **LLM-first** 路径：
 
-- `local-rule-engine`
-  不调用外部模型，直接按人物档案与规则生成，优点是稳定、离线；缺点是自然度有限。
-- 真实 LLM 聊天生成
-  `zaomeng` 先整理人物/关系/记忆约束，再把这些约束喂给 LLM 生成最终台词，群聊时后发言角色还会看到本轮前面已经说过的话。
+- `zaomeng` 先整理人物、关系、记忆和模式约束
+- 再由可生成 LLM 负责最终语言表达
+- 群聊时，后发言角色会看到本轮前面已经生成的回复
 
-常见配置示例：
+运行时能力探测优先级：
+
+- 进程内宿主注入：优先从 `HostContext` 复用宿主 LLM
+- 环境变量或配置：如 `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `OLLAMA_MODEL`，或 `runtime/config.yaml`
+- 如果拿不到可生成 LLM，直接中止工作流并提示补齐模型配置，而不是退回“规则模式”
+
+进程内宿主接入的最小示例：
+
+```python
+from src.core.runtime_factory import HostProvidedLLM, RuntimeDependencyOverrides, build_runtime_parts
+
+host_llm = HostProvidedLLM.from_host_context(context, provider_name="openclaw-host")
+parts = build_runtime_parts(overrides=RuntimeDependencyOverrides(llm=host_llm))
+```
+
+CLI 直跑时的常见配置示例：
 
 ```yaml
 llm:
@@ -45,7 +60,7 @@ llm:
   max_tokens: 300
 
 chat_engine:
-  generation_mode: "auto"          # auto / rule-only / llm-only
+  generation_mode: "llm-only"
   enable_turn_interactions: true   # 群聊里后发言角色可接前一句
   allow_character_silence: true    # 低相关角色可以不强行插话
   min_reply_relevance: 4
@@ -535,8 +550,6 @@ Dreamforge/
 │     └─ src/
 ├─ skills/                       # 其它宿主技能目录
 │  └─ zaomeng-skill/
-├─ openclaw-skill/               # OpenClaw 侧集成物
-├─ hermes-skill/                 # Hermes 侧集成物
 ├─ scripts/                      # 安装与辅助脚本
 ├─ tests/                        # 回归与行为测试
 │  └─ test_relation_behavior.py

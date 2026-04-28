@@ -21,18 +21,33 @@ The current recommended direction is:
 - natural-language first: distill first, then enter `act` / `observe` through natural-language intent
 - embedded minimal runtime in the skill package: `clawhub-zaomeng-skill` now ships with a packaged minimal runtime
 - layered constraints: `output_schema.md` handles format, `style_differ.md` handles anti-homogenization, and `logic_constraint.md` handles persona-stability and anti-OOC rules
-- layered dialogue generation: `zaomeng` keeps persona, relation, and memory constraints, while a real LLM can turn them into more natural final dialogue when configured
+- LLM-first workflow: distillation, extraction, and chat all require a generation-capable LLM; rules now mainly provide extraction signals, routing hints, and guardrails
+- host-first reuse: when OpenClaw, Hermes, or another agent host already provides an LLM through `HostContext`, reuse it directly before asking for standalone runtime config
 
 ## Dialogue Generation
 
-Chat now supports two generation paths:
+Chat, distillation, and relationship extraction now follow the same **LLM-first** path:
 
-- `local-rule-engine`
-  Fully local rule-based generation with no external model call.
-- Real LLM chat generation
-  `zaomeng` prepares persona, relation, and memory constraints first, then a real model produces the final line. In group chat, later speakers can see replies already produced earlier in the same turn.
+- `zaomeng` prepares persona, relation, memory, and mode constraints
+- a generation-capable LLM produces the final wording
+- in group chat, later speakers can see replies produced earlier in the same turn
 
-Example configuration:
+Capability resolution order:
+
+- in-process host injection through `HostContext`
+- environment variables or direct config such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_MODEL`, or `runtime/config.yaml`
+- if no generation-capable LLM is available, the workflow stops and asks for model configuration instead of falling back to a rule-only chat path
+
+Minimal in-process host example:
+
+```python
+from src.core.runtime_factory import HostProvidedLLM, RuntimeDependencyOverrides, build_runtime_parts
+
+host_llm = HostProvidedLLM.from_host_context(context, provider_name="openclaw-host")
+parts = build_runtime_parts(overrides=RuntimeDependencyOverrides(llm=host_llm))
+```
+
+CLI example configuration:
 
 ```yaml
 llm:
@@ -45,7 +60,7 @@ llm:
   max_tokens: 300
 
 chat_engine:
-  generation_mode: "auto"          # auto / rule-only / llm-only
+  generation_mode: "llm-only"
   enable_turn_interactions: true
   allow_character_silence: true
   min_reply_relevance: 4
@@ -599,8 +614,6 @@ Dreamforge/
 │     └─ src/
 ├─ skills/                       # other skill directories
 │  └─ zaomeng-skill/
-├─ openclaw-skill/               # OpenClaw-side integration
-├─ hermes-skill/                 # Hermes-side integration
 ├─ scripts/                      # install and helper scripts
 ├─ tests/                        # regression and behavior tests
 │  └─ test_relation_behavior.py
