@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from src.core.config import Config
-from src.core.contracts import CostEstimator, PathProviderLike, RuleProvider
+from src.core.contracts import CostEstimator, PathProviderLike, RuleProvider, RuntimePartsLike
 from src.core.exceptions import ZaomengError
 from src.utils.file_utils import canonical_aliases, ensure_dir, novel_id_from_input, safe_filename
 from src.utils.text_parser import load_novel_text, split_sentences
@@ -246,6 +246,16 @@ class NovelDistiller:
         self.second_pass_mode = str(self.config.get("distillation.second_pass_mode", "auto")).strip().lower()
         self.stage_window_size = int(self.config.get("distillation.stage_window_size", 6))
         self.llm_evidence_lines_per_stage = int(self.config.get("distillation.llm_evidence_lines_per_stage", 6))
+
+    @classmethod
+    def from_runtime_parts(cls, parts: RuntimePartsLike) -> "NovelDistiller":
+        return cls(
+            parts.config,
+            llm_client=parts.llm,
+            token_counter=parts.token_counter,
+            rulebook=parts.rulebook,
+            path_provider=parts.path_provider,
+        )
 
     def estimate_cost(self, novel_path: str) -> float:
         text = self.prepare_novel_text(load_novel_text(novel_path))

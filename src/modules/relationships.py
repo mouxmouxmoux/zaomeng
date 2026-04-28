@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
-from src.core.contracts import CostEstimator, PathProviderLike, RuleProvider
+from src.core.contracts import CostEstimator, PathProviderLike, RuleProvider, RuntimePartsLike
 from src.modules.distillation import NovelDistiller
 from src.utils.file_utils import novel_id_from_input, save_markdown_data
 from src.utils.text_parser import load_novel_text, split_sentences
@@ -64,6 +64,17 @@ class RelationshipExtractor:
         self.conflict_markers = tuple(rules.get("conflict_markers", []))
         self.ambiguous_appellations = set(rules.get("ambiguous_appellations", []))
         self.appellation_target_window = int(rules.get("appellation_target_window", 8))
+
+    @classmethod
+    def from_runtime_parts(cls, parts: RuntimePartsLike) -> "RelationshipExtractor":
+        return cls(
+            parts.config,
+            llm_client=parts.llm,
+            token_counter=parts.token_counter,
+            distiller=parts.distiller,
+            rulebook=parts.rulebook,
+            path_provider=parts.path_provider,
+        )
 
     def estimate_cost(self, novel_path: str) -> float:
         text = self.distiller.prepare_novel_text(load_novel_text(novel_path))
@@ -771,4 +782,3 @@ class RelationshipExtractor:
     @staticmethod
     def _pair_key(a: str, b: str) -> str:
         return "_".join(sorted([a, b]))
-

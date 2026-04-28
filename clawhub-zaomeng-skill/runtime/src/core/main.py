@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Runtime-owned CLI wrapper."""
+"""Backward-compatible CLI wrapper."""
 
 from __future__ import annotations
 
@@ -18,15 +18,7 @@ from src.modules.chat_engine import ChatEngine  # Backward-compatible patch targ
 class ZaomengCLI(_SharedZaomengCLI):
     def _build_chat_engine(self) -> ChatEngine:
         parts = self._fresh_runtime_parts()
-        return ChatEngine(
-            self.config,
-            llm=parts.llm,
-            reflection=parts.reflection,
-            speaker=parts.speaker,
-            distiller=parts.distiller,
-            rulebook=parts.rulebook,
-            path_provider=parts.path_provider,
-        )
+        return parts.build_chat_engine(ChatEngine)
 
 
 def main() -> None:

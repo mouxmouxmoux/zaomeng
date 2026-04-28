@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
+from src.core.contracts import RuntimePartsLike
 from src.core.exceptions import ZaomengError
 from src.core.path_provider import PathProvider
 from src.core.rulebook import RuleBook
@@ -78,6 +79,18 @@ class ChatEngine:
         self.address_suffixes = tuple(
             getattr(self.distiller, "address_suffixes", ())
             or self.rulebook.get("distillation", "address_suffixes", list(self.ADDRESS_SUFFIXES))
+        )
+
+    @classmethod
+    def from_runtime_parts(cls, parts: RuntimePartsLike) -> "ChatEngine":
+        return cls(
+            parts.config,
+            llm=parts.llm,
+            reflection=parts.reflection,
+            speaker=parts.speaker,
+            distiller=parts.distiller,
+            rulebook=parts.rulebook,
+            path_provider=parts.path_provider,
         )
 
     def create_session(self, novel: str, mode: str) -> Dict[str, Any]:

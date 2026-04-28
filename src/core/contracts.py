@@ -80,3 +80,16 @@ class PathProviderLike(Protocol):
 
     def visualization_file(self, novel_id: str, suffix: str) -> Path:
         ...
+
+
+class RuntimePartsLike(Protocol):
+    config: Any
+    path_provider: PathProviderLike
+    rulebook: RuleProvider
+    llm: CostEstimator
+    token_counter: Any
+    reflection: Any
+    distiller: Any
+    speaker: Any
+    extractor: Any
+    chat_engine: Any

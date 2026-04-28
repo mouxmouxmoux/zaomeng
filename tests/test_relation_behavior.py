@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 from src.core.config import Config
 from src.core.main import ZaomengCLI
-from src.core.runtime_factory import build_runtime_parts
+from src.core.runtime_factory import RuntimeDependencyOverrides, build_runtime_parts
 from src.modules.distillation import NovelDistiller
 from src.utils.file_utils import load_markdown_data, normalize_character_name, normalize_relation_key, save_markdown_data
 
@@ -188,6 +188,158 @@ class RelationBehaviorTests(unittest.TestCase):
 
         self.assertIs(cli.config, parts.config)
         self.assertEqual(seen["count"], 1)
+
+    def test_runtime_parts_chat_engine_factory_reuses_shared_dependencies(self):
+        parts = build_runtime_parts(Config())
+        engine = parts.create_chat_engine()
+
+        self.assertIs(engine.llm, parts.llm)
+        self.assertIs(engine.reflection, parts.reflection)
+        self.assertIs(engine.speaker, parts.speaker)
+        self.assertIs(engine.distiller, parts.distiller)
+        self.assertIs(engine.rulebook, parts.rulebook)
+        self.assertIs(engine.path_provider, parts.path_provider)
+
+    def test_runtime_parts_build_chat_engine_supports_custom_patch_target(self):
+        parts = build_runtime_parts(Config())
+        custom_engine = Mock(name="custom_engine")
+        custom_chat_engine_cls = Mock(return_value=custom_engine)
+
+        built = parts.build_chat_engine(custom_chat_engine_cls)
+
+        self.assertIs(built, custom_engine)
+        custom_chat_engine_cls.assert_called_once_with(
+            parts.config,
+            llm=parts.llm,
+            reflection=parts.reflection,
+            speaker=parts.speaker,
+            distiller=parts.distiller,
+            rulebook=parts.rulebook,
+            path_provider=parts.path_provider,
+        )
+
+    def test_runtime_parts_module_factories_reuse_shared_dependencies(self):
+        parts = build_runtime_parts(Config())
+        self.assertIs(parts.speaker.correction_service, parts.reflection)
+        self.assertIs(parts.speaker.rulebook, parts.rulebook)
+        self.assertIs(parts.distiller.llm_client, parts.llm)
+        self.assertIs(parts.distiller.token_counter, parts.token_counter)
+        self.assertIs(parts.extractor.distiller, parts.distiller)
+        self.assertIs(parts.extractor.llm_client, parts.llm)
+
+    def test_runtime_parts_accept_dependency_overrides(self):
+        config = Config()
+        base_parts = build_runtime_parts(config)
+        overrides = RuntimeDependencyOverrides(
+            reflection=base_parts.reflection,
+            speaker=base_parts.speaker,
+        )
+
+        overridden_parts = build_runtime_parts(config, overrides=overrides)
+
+        self.assertIs(overridden_parts.reflection, base_parts.reflection)
+        self.assertIs(overridden_parts.speaker, base_parts.speaker)
+        self.assertIsNotNone(overridden_parts.distiller)
+        self.assertIsNotNone(overridden_parts.extractor)
+
+    def test_runtime_parts_construct_modules_lazily(self):
+        with (
+            patch("src.core.runtime_parts.ReflectionEngine.from_runtime_parts") as reflection_factory,
+            patch("src.core.runtime_parts.NovelDistiller.from_runtime_parts") as distiller_factory,
+            patch("src.core.runtime_parts.Speaker.from_runtime_parts") as speaker_factory,
+            patch("src.core.runtime_parts.RelationshipExtractor.from_runtime_parts") as extractor_factory,
+            patch("src.core.runtime_parts.RuntimeParts.build_chat_engine") as chat_engine_factory,
+        ):
+            reflection_factory.return_value = Mock(name="reflection")
+            distiller_factory.return_value = Mock(name="distiller")
+            speaker_factory.return_value = Mock(name="speaker")
+            extractor_factory.return_value = Mock(name="extractor")
+            chat_engine_factory.return_value = Mock(name="chat_engine")
+
+            parts = build_runtime_parts(Config())
+
+            reflection_factory.assert_not_called()
+            distiller_factory.assert_not_called()
+            speaker_factory.assert_not_called()
+            extractor_factory.assert_not_called()
+            chat_engine_factory.assert_not_called()
+
+            self.assertIs(parts.reflection, reflection_factory.return_value)
+            self.assertIs(parts.distiller, distiller_factory.return_value)
+            self.assertIs(parts.speaker, speaker_factory.return_value)
+            self.assertIs(parts.extractor, extractor_factory.return_value)
+            self.assertIs(parts.chat_engine, chat_engine_factory.return_value)
+
+            self.assertEqual(reflection_factory.call_count, 1)
+            self.assertEqual(distiller_factory.call_count, 1)
+            self.assertEqual(speaker_factory.call_count, 1)
+            self.assertEqual(extractor_factory.call_count, 1)
+            self.assertEqual(chat_engine_factory.call_count, 1)
+
+    def test_runtime_parts_fork_reuses_foundational_dependencies(self):
+        parts = build_runtime_parts(Config())
+
+        forked = parts.fork()
+
+        self.assertIs(forked.config, parts.config)
+        self.assertIs(forked.path_provider, parts.path_provider)
+        self.assertIs(forked.rulebook, parts.rulebook)
+        self.assertIs(forked.llm, parts.llm)
+        self.assertIs(forked.token_counter, parts.token_counter)
+        self.assertIsNot(forked, parts)
+        self.assertIsNot(forked.reflection, parts.reflection)
+        self.assertIsNot(forked.distiller, parts.distiller)
+        self.assertIsNot(forked.speaker, parts.speaker)
+        self.assertIsNot(forked.extractor, parts.extractor)
+
+    def test_runtime_parts_fork_accepts_incremental_overrides(self):
+        parts = build_runtime_parts(Config())
+        custom_reflection = Mock(name="custom_reflection")
+        custom_speaker = Mock(name="custom_speaker")
+
+        forked = parts.fork(
+            RuntimeDependencyOverrides(
+                reflection=custom_reflection,
+                speaker=custom_speaker,
+            )
+        )
+
+        self.assertIs(forked.path_provider, parts.path_provider)
+        self.assertIs(forked.rulebook, parts.rulebook)
+        self.assertIs(forked.llm, parts.llm)
+        self.assertIs(forked.token_counter, parts.token_counter)
+        self.assertIs(forked.reflection, custom_reflection)
+        self.assertIs(forked.speaker, custom_speaker)
+        self.assertIsNot(forked.distiller, parts.distiller)
+        self.assertIsNot(forked.extractor, parts.extractor)
+
+    def test_cli_fresh_runtime_parts_forks_default_runtime_parts(self):
+        cli = ZaomengCLI()
+
+        fresh = cli._fresh_runtime_parts()
+
+        self.assertIsNot(fresh, cli.parts)
+        self.assertIs(fresh.path_provider, cli.parts.path_provider)
+        self.assertIs(fresh.rulebook, cli.parts.rulebook)
+        self.assertIs(fresh.llm, cli.parts.llm)
+        self.assertIs(fresh.token_counter, cli.parts.token_counter)
+        self.assertIsNot(fresh.chat_engine, cli.parts.chat_engine)
+
+    def test_runtime_dependency_overrides_merge_prefers_explicit_values(self):
+        base = RuntimeDependencyOverrides(
+            path_provider=Mock(name="base_path_provider"),
+            llm=Mock(name="base_llm"),
+        )
+        incoming = RuntimeDependencyOverrides(
+            llm=Mock(name="incoming_llm"),
+            speaker=Mock(name="incoming_speaker"),
+        )
+
+        merged = base.merged_with(incoming)
+
+        self.assertIs(merged.path_provider, base.path_provider)
+        self.assertIs(merged.llm, incoming.llm)
+        self.assertIs(merged.speaker, incoming.speaker)
 
     def test_chat_engine_scopes_profiles_and_relations_by_novel(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -9,6 +9,7 @@ from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
+from src.core.contracts import RuntimePartsLike
 from src.core.path_provider import PathProvider
 from src.utils.file_utils import ensure_dir, load_markdown_data, save_markdown_data
 
@@ -34,6 +35,10 @@ class ReflectionEngine:
         self.config = config
         self.path_provider = path_provider
         self.corrections_dir = ensure_dir(self.path_provider.corrections_dir())
+
+    @classmethod
+    def from_runtime_parts(cls, parts: RuntimePartsLike) -> "ReflectionEngine":
+        return cls(parts.config, path_provider=parts.path_provider)
 
     def detect_ooc(self, profile: Dict[str, Any], message: str) -> OOCCheckResult:
         reasons: List[str] = []

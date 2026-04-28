@@ -8,7 +8,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from src.core.config import Config
-from src.core.contracts import CorrectionService, RuleProvider
+from src.core.contracts import CorrectionService, RuleProvider, RuntimePartsLike
 
 
 class Speaker:
@@ -58,6 +58,10 @@ class Speaker:
             if str(key).strip() and str(value).strip()
         }
         self.archetypes = dict(self.rulebook.get("distillation", "archetypes", {}))
+
+    @classmethod
+    def from_runtime_parts(cls, parts: RuntimePartsLike) -> "Speaker":
+        return cls(parts.config, correction_service=parts.reflection, rulebook=parts.rulebook)
 
     def generate(
         self,

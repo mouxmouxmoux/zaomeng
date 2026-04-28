@@ -41,6 +41,14 @@ Tasks:
 4. Normalize construction through a single runtime factory.
 5. Align packaging docs and manifests with the shared-implementation / thin-wrapper split.
 6. Keep local developer checks and CI pointed at the same `scripts/dev_checks.py` entrypoint.
+7. Standardize core module construction around `RuntimeParts` helper constructors before considering a DI framework.
+8. Make `RuntimeParts` the lazy composition root for reflection, distillation, speaker, extractor, and chat engine creation.
+9. Reuse foundational runtime dependencies through `RuntimeParts.fork()` so CLI and tools do not rebuild the base graph from scratch.
+10. Support incremental dependency overrides on top of forked runtime parts so tests and alternate entrypoints can swap only the pieces they need.
+11. Synchronize runtime-owned wrapper files through the same mirror tooling so the compatibility layer stays mechanical instead of hand-maintained.
+12. Drive wrapper guardrails from the runtime-owned manifest entries so source/runtime wrapper pairs stay aligned without duplicate test lists.
+13. Derive runtime layer documentation checks from the mirror manifest so packaging docs and wrapper docs drift less easily.
+14. Keep `include` and `runtime_owned` under the same default mirror/report path so wrapper drift is caught by the standard runtime sync flow.
 
 ## P2: Reliability And Developer Experience
 

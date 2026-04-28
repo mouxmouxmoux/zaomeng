@@ -45,6 +45,30 @@ def load_runtime_owned_patterns(manifest_path: Path = MANIFEST_PATH) -> List[str
     return _normalized_manifest_entries(patterns)
 
 
+def load_managed_patterns(manifest_path: Path = MANIFEST_PATH) -> List[str]:
+    include = load_manifest_patterns(manifest_path)
+    runtime_owned = load_runtime_owned_patterns(manifest_path)
+    return [*include, *runtime_owned]
+
+
+def load_managed_runtime_paths(manifest_path: Path = MANIFEST_PATH) -> List[str]:
+    return [f"runtime/src/{relative_path}" for relative_path in load_managed_patterns(manifest_path)]
+
+
+def load_documented_runtime_wrapper_paths(manifest_path: Path = MANIFEST_PATH) -> List[str]:
+    return [f"runtime/src/{relative_path}" for relative_path in load_runtime_owned_patterns(manifest_path)]
+
+
+def load_documented_shared_runtime_core_paths(manifest_path: Path = MANIFEST_PATH) -> List[str]:
+    include = set(load_manifest_patterns(manifest_path))
+    preferred = [
+        "core/cli_app.py",
+        "core/runtime_parts.py",
+        "core/logging_setup.py",
+    ]
+    return [f"runtime/src/{relative_path}" for relative_path in preferred if relative_path in include]
+
+
 def load_manifest(manifest_path: Path = MANIFEST_PATH) -> Dict[str, Any]:
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -76,6 +100,27 @@ def validate_manifest(manifest_path: Path = MANIFEST_PATH) -> List[str]:
     if invalid_entries:
         errors.append(f"Manifest entries must point to Python files: {', '.join(invalid_entries)}")
 
+    source_root = PROJECT_ROOT / "src"
+    runtime_root = PROJECT_ROOT / "clawhub-zaomeng-skill" / "runtime" / "src"
+    missing_in_source_manifest = sorted(
+        entry for entry in include if not (source_root / Path(entry)).is_file()
+    )
+    if missing_in_source_manifest:
+        errors.append(
+            "Manifest include entries must exist in src: " + ", ".join(missing_in_source_manifest)
+        )
+
+    missing_runtime_owned_roots = sorted(
+        entry
+        for entry in runtime_owned
+        if not (source_root / Path(entry)).is_file() or not (runtime_root / Path(entry)).is_file()
+    )
+    if missing_runtime_owned_roots:
+        errors.append(
+            "Runtime-owned entries must exist in both src and runtime/src: "
+            + ", ".join(missing_runtime_owned_roots)
+        )
+
     return errors
 
 
@@ -104,7 +149,7 @@ def build_report(
     runtime_root: Path = RUNTIME_ROOT,
     patterns: Sequence[str] | None = None,
 ) -> MirrorReport:
-    patterns = list(patterns or load_manifest_patterns())
+    patterns = list(patterns or load_managed_patterns())
     source_files = _manifest_python_files(source_root, patterns)
     runtime_files = _manifest_python_files(runtime_root, patterns)
 
@@ -134,7 +179,7 @@ def sync_mirror(
 ) -> MirrorSyncResult:
     source_root = source_root.resolve()
     runtime_root = runtime_root.resolve()
-    patterns = list(patterns or load_manifest_patterns())
+    patterns = list(patterns or load_managed_patterns())
     source_files = _manifest_python_files(source_root, patterns)
     runtime_files = _manifest_python_files(runtime_root, patterns)
 

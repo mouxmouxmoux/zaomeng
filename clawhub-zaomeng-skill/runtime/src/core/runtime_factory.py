@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-"""Runtime-owned runtime factory wrapper."""
+"""Backward-compatible runtime factory wrapper."""
 
-from src.core.runtime_parts import RuntimeParts, build_runtime_parts
+from src.core.runtime_parts import RuntimeDependencyOverrides, RuntimeParts, build_runtime_parts
 
-__all__ = ["RuntimeParts", "build_runtime_parts"]
+__all__ = ["RuntimeDependencyOverrides", "RuntimeParts", "build_runtime_parts"]

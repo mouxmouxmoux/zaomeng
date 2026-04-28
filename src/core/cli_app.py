@@ -97,6 +97,8 @@ class ZaomengCLI:
         self.parser = self._create_parser()
 
     def _fresh_runtime_parts(self) -> RuntimeParts:
+        if self._runtime_parts_builder is build_runtime_parts:
+            return self.parts.fork()
         return self._runtime_parts_builder(self.config)
 
     def _build_chat_engine(self) -> ChatEngine:
