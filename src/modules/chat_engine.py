@@ -512,7 +512,11 @@ class ChatEngine:
                 reason=reason,
             )
             self._persist_correction_memory(session, character, target, original, corrected, reason)
-            print(f"纠错已记录: {item['character']} -> {item.get('target') or '任意对象'}")
+            self.logger.info(
+                "纠错已记录: %s -> %s",
+                item["character"],
+                item.get("target") or "任意对象",
+            )
             return True
         return False
 

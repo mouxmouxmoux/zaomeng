@@ -170,7 +170,10 @@ class RelationBehaviorTests(unittest.TestCase):
 
             config = Config(str(config_path))
 
-            self.assertEqual(Path(config.get_path("characters")), root / "data" / "characters")
+            self.assertEqual(
+                Path(config.get_path("characters")).resolve(),
+                (root / "data" / "characters").resolve(),
+            )
 
     def test_cli_accepts_injected_runtime_parts_builder(self):
         parts = build_runtime_parts(Config())
