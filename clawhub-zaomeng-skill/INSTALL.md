@@ -7,10 +7,10 @@
 
 ## 当前打包形态
 
-这个 bundle 已经内嵌最小可运行的 zaomeng 运行时。
+这个 bundle 是一个宿主驱动的 skill 包，安装后直接提供 prompt、references、examples 和 helper scripts。
 
-- 不再把运行时克隆外部仓库作为主路径
-- 默认通过包内运行时入口执行
+- 轻量 helper 脚本入口：`tools/prepare_novel_excerpt.py`
+- prompt payload 组装脚本：`tools/build_prompt_payload.py`
 
 ## 本目录应包含的关键文件
 
@@ -19,9 +19,8 @@
 - `SKILL.md`
 - `MANIFEST.md`
 - `PUBLISH.md`
-- `runtime/zaomeng_cli.py`
-- `runtime/src/...`
-- `runtime/requirements.txt`
+- `tools/prepare_novel_excerpt.py`
+- `tools/build_prompt_payload.py`
 - `references/output_schema.md`
 - `references/style_differ.md`
 - `references/logic_constraint.md`
@@ -38,18 +37,15 @@
 - 可选：`tiktoken`
 - 可选：`ebooklib`，仅在读取 `.epub` 小说时需要
 
-## 运行建议
+## 安装建议
 
-- Windows / PowerShell 优先使用 `py -3 runtime/zaomeng_cli.py ...`
-- 默认运行时数据目录为 `runtime/data/`
+- `python scripts/install_skill.py --skills-dir <your-skills-root>` 安装 skill 包
 - 包内 prompt 与 references 主要用于约束与说明，不应用来替代引擎入口
-- 当前运行时结构按两层组织：
-  - runtime 自持薄 wrapper：`runtime/src/core/main.py`、`runtime/src/core/runtime_factory.py`、`runtime/src/core/logging_utils.py`
-  - 共享实现镜像：`runtime/src/core/cli_app.py`、`runtime/src/core/runtime_parts.py`、`runtime/src/core/logging_setup.py` 及 `modules/`、`utils/` 下的共享业务模块
+- 安装完成后，宿主可直接调用 helper scripts 组织蒸馏、关系抽取和对话生成
 
 ## 快速校验清单
 
 1. `SKILL.md` frontmatter 合法。
-2. `runtime/zaomeng_cli.py` 可以启动。
+2. `tools/prepare_novel_excerpt.py` 可以执行。
 3. 输出字段符合 `references/output_schema.md`。
 4. 安全与校验相关规则文件齐全。

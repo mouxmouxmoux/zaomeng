@@ -2,25 +2,13 @@
 
 `zaomeng-skill` 是一个面向中文小说人物蒸馏、关系抽取、角色单聊与群聊的技能包。
 
-它不是普通陪聊模板，而是一套“先蒸馏，再按人物档案说话”的 **LLM-first** 工作流。
+它的工作方式很直接：
 
-更准确地说：
-
-- `zaomeng` 负责人物蒸馏、关系抽取、人格导航、持久记忆与 OOC 约束
-- 蒸馏、抽取和聊天都要求存在可生成 LLM；规则文件主要负责提取信号、边界约束和路由辅助
-- 如果宿主已经提供模型能力，优先直接复用宿主 LLM，而不是要求再单独配一套 runtime 模型
+- 读取小说内容
+- 准备 excerpt、prompt 和 references
+- 交给宿主 LLM 生成蒸馏结果、关系结果和角色回复
 
 许可证：`MIT-0`（MIT No Attribution）
-
-## 这版有什么变化
-
-当前发布线已经切到 `3.3.0`，重点变化是：
-
-- 继续保留 Markdown-first 的人物与关系工作流
-- `RuntimeParts` 统一 skill 内嵌 runtime 的装配路径，补充懒加载、依赖复用与增量 overrides
-- runtime 薄 wrapper 与共享实现镜像现在纳入同一套 mirror / wrapper / packaging guardrails
-- 修复 Windows CI 下的路径解析与控制台编码问题
-- 继续支持真实 LLM 聊天生成、群聊顺序互动、以及低相关角色按需沉默
 
 ## 对话生成
 
@@ -30,39 +18,7 @@
 - 再由可生成 LLM 负责最终表达
 - 群聊里后发言角色可以看到本轮已生成的前文
 
-能力探测顺序：
-
-- 优先复用宿主通过 `HostContext` 注入的 LLM
-- 其次使用环境变量或 `runtime/config.yaml` 中可用的模型配置
-- 如果拿不到可生成 LLM，就直接中止工作流并提示补齐配置
-
-宿主接入示例：
-
-```python
-from src.core.runtime_factory import HostProvidedLLM, RuntimeDependencyOverrides, build_runtime_parts
-
-host_llm = HostProvidedLLM.from_host_context(context, provider_name="openclaw-host")
-parts = build_runtime_parts(overrides=RuntimeDependencyOverrides(llm=host_llm))
-```
-
-CLI 配置示例：
-
-```yaml
-llm:
-  provider: "openai"               # 也可用 openai-compatible / anthropic / ollama
-  model: "gpt-4.1-mini"
-  api_key: ""
-  api_key_env: "OPENAI_API_KEY"
-  base_url: ""
-  temperature: 0.7
-  max_tokens: 300
-
-chat_engine:
-  generation_mode: "llm-only"
-  enable_turn_interactions: true
-  allow_character_silence: true
-  min_reply_relevance: 4
-```
+这个 skill 默认运行在宿主环境中，宿主负责实际调用模型。
 
 ## 它能做什么
 
@@ -135,16 +91,21 @@ python scripts/install_skill.py --skills-dir <your-skills-root>
 - 如果读取 `.epub`，还需要 `ebooklib`
 - 如果需要更准确的 token 估算，可选装 `tiktoken`
 
-skill 包当前使用的打包运行时入口是：
+skill 目前已经提供 prompt-first helper 入口：
 
 ```text
-runtime/zaomeng_cli.py
+tools/prepare_novel_excerpt.py
+tools/build_prompt_payload.py
 ```
 
-当前 runtime 源码按两层组织：
+常见的 prompt-first 调用方式是先准备 excerpt，再组装 prompt payload。
 
-- runtime 自持薄 wrapper：`runtime/src/core/main.py`、`runtime/src/core/runtime_factory.py`、`runtime/src/core/logging_utils.py`
-- 共享实现镜像：`runtime/src/core/cli_app.py`、`runtime/src/core/runtime_parts.py`、`runtime/src/core/logging_setup.py`，以及 `modules/`、`utils/` 下的共享业务模块
+例如：
+
+```bash
+py -3 tools/prepare_novel_excerpt.py --novel <路径>
+py -3 tools/build_prompt_payload.py --mode distill --novel <路径> --characters A,B
+```
 
 ## 推荐用法
 
@@ -189,21 +150,9 @@ runtime/zaomeng_cli.py
 请让大家围绕联合孙权这件事各说一句
 ```
 
-## CLI 示例
-
-如果你直接运行打包运行时，可用这些命令：
-
-```bash
-py -3 runtime/zaomeng_cli.py distill --novel <路径> --characters A,B
-py -3 runtime/zaomeng_cli.py extract --novel <路径>
-py -3 runtime/zaomeng_cli.py chat --novel <路径或名称> --mode auto --message "让我扮演A和B聊天"
-py -3 runtime/zaomeng_cli.py view --character <角色名> --novel <路径或名称>
-py -3 runtime/zaomeng_cli.py correct --session <id> --message <原句> --corrected <修正句> --character <角色名>
-```
-
 ## 人格包结构
 
-当前人物主存储为 Markdown 人格包，常见目录结构如下：
+人物档案目录通常如下：
 
 ```text
 runtime/data/characters/<novel_id>/<角色名>/
@@ -234,7 +183,7 @@ runtime/data/characters/<novel_id>/<角色名>/
 
 ## 约束文件
 
-这版 skill 把约束拆成三层：
+约束分为三层：
 
 - `references/output_schema.md`
   负责输出格式与字段规范
@@ -245,10 +194,12 @@ runtime/data/characters/<novel_id>/<角色名>/
 
 如果你在检查输出质量，这三份文件应该一起看，而不是只看 schema。
 
-## 和 SKILL.md 的区别
+## 产物
 
-- `README.md` 是给用户看的，重点是安装、使用方式和产物说明
-- `SKILL.md` 是给宿主和 agent 读的，重点是执行规则、调用约束和禁止行为
+- 人物档案
+- 人物关系结果
+- 人物关系图谱
+- 角色对话回复
 
 ## 发布提示
 
@@ -261,7 +212,7 @@ runtime/data/characters/<novel_id>/<角色名>/
 - `PUBLISH.md`
 - `prompts/`
 - `references/`
-- `runtime/`
+- `tools/`
 
 ## License
 

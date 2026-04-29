@@ -10,16 +10,17 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SMOKE_TEST_MODULES = [
-    "tests.test_runtime_mirror",
-    "tests.test_runtime_entrypoint",
-    "tests.test_runtime_wrappers",
+    "tests.test_cli_structure",
+    "tests.test_install_skill",
+    "tests.test_novel_preparation",
+    "tests.test_prompt_payloads",
     "tests.test_packaging_docs",
 ]
 
 
-def run_step(title: str, command: list[str]) -> None:
+def run_step(title: str, command: list[str], *, env: dict[str, str] | None = None) -> None:
     print(f"[step] {title}")
-    subprocess.run(command, cwd=PROJECT_ROOT, check=True)
+    subprocess.run(command, cwd=PROJECT_ROOT, check=True, env=env)
 
 
 def parse_args() -> argparse.Namespace:
@@ -27,15 +28,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--smoke-only",
         action="store_true",
-        help="Run mirror checks and fast guardrail tests without the full test suite.",
+        help="Run prompt-first guardrail tests without the full test suite.",
     )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    run_step("sync runtime mirror", [sys.executable, "scripts/sync_runtime_mirror.py"])
-    run_step("check runtime mirror", [sys.executable, "scripts/check_runtime_mirror.py"])
     run_step("run smoke guardrails", [sys.executable, "-m", "unittest", *SMOKE_TEST_MODULES])
     run_step("run mypy", [sys.executable, "-m", "mypy", "--config-file", "mypy.ini"])
     if args.smoke_only:

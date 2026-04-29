@@ -44,6 +44,14 @@ def _strip_html_tags(text: str) -> str:
 
 
 def _decode_text_bytes(raw: bytes) -> str:
+    for preferred in ("utf-8-sig", "utf-8"):
+        try:
+            decoded = raw.decode(preferred)
+        except UnicodeDecodeError:
+            continue
+        if "\ufffd" not in decoded and "\x00" not in decoded:
+            return decoded
+
     last_error: UnicodeError | None = None
     best_text = ""
     best_score: tuple[int, int, int, int] | None = None

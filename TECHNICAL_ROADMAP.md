@@ -1,110 +1,158 @@
 # Technical Roadmap
 
-This roadmap turns the current improvement ideas into a staged refactor plan.
-The goal is to reduce maintenance risk first, then improve reliability and
-extensibility without forcing a large rewrite in one pass.
+This roadmap replaces the earlier "embedded runtime mirror inside the skill"
+direction with a cleaner separation:
 
-## P0: Stabilize The Current Architecture
+- the skill becomes a prompt-first package with lightweight helper scripts
+- the CLI becomes an independent application entrypoint
+- shared Python code lives in reusable core modules instead of inside the skill
+
+The target is to stop treating the skill as a bundled executable runtime while
+still preserving the useful shared logic for text preparation, storage,
+prompting, parsing, and result shaping.
+
+## Architectural Direction
+
+Target boundaries:
+
+- `skill`
+  - `SKILL.md`
+  - prompts and reference docs
+  - lightweight helper scripts such as text loading, chunking, transcoding,
+    excerpt preparation, and output shaping
+- `cli`
+  - argparse / subcommands
+  - interactive session UX
+  - local developer workflow and standalone automation
+- `shared core`
+  - config and contracts that are not CLI-specific
+  - text loading / parsing / chunking
+  - prompt assembly helpers
+  - persona / relation storage helpers
+  - result parsing and post-processing
+  - host LLM adaptation
+
+Non-target:
+
+- the skill should not permanently carry a mirrored CLI runtime as its primary
+  execution model
+
+## P0: Reset The Boundary
 
 Status: completed
 
 Goals:
-- Stop `src/` and `clawhub-zaomeng-skill/runtime/src/` from drifting.
-- Add guardrails before larger refactors.
-- Keep current behavior and CLI flow stable.
+- Replace the old roadmap assumptions before more code accumulates on them.
+- Document the new skill / CLI / shared-core split clearly.
+- Mark the embedded runtime path as transitional rather than strategic.
 
 Tasks:
-1. Add a runtime mirror consistency check.
-2. Keep mirror validation in the test suite.
-3. Document the consolidation path before moving files.
-4. Replace broad internal `print` usage with structured logging where output is
-   not part of the CLI UX.
-5. Introduce project-level exception types for config, LLM, profile loading,
-   and visualization failures.
-6. Replace broad mirror globs with an explicit runtime mirror file manifest.
-7. Move runtime wrapper files out of the mirror set so only shared business
-   modules remain under sync control.
+1. Rewrite the roadmap around prompt-first skill packaging.
+2. Update packaging language so "skill = packaged runtime" is no longer the
+   long-term story.
+3. Add the first lightweight skill helper script that does useful preprocessing
+   without depending on the CLI shell.
+4. Start carving out shared helper modules for skill-side utilities.
 
-## P1: Consolidate Shared Code
+## P1: Extract Skill Helpers From CLI Assumptions
 
-Status: in progress
+Status: completed
 
 Goals:
-- Remove double maintenance across `src/` and runtime.
-- Centralize core services and domain logic.
+- Let the skill call prompts plus helper scripts directly.
+- Move preprocessing responsibilities out of the embedded runtime mindset.
 
 Tasks:
-1. Extract shared Python code into a single package directory.
-2. Keep runtime as a thin wrapper around the shared package.
-3. Define repository-style interfaces for profiles, sessions, relations, and
-   visualization exporters.
-4. Normalize construction through a single runtime factory.
-5. Align packaging docs and manifests with the shared-implementation / thin-wrapper split.
-6. Keep local developer checks and CI pointed at the same `scripts/dev_checks.py` entrypoint.
-7. Standardize core module construction around `RuntimeParts` helper constructors before considering a DI framework.
-8. Make `RuntimeParts` the lazy composition root for reflection, distillation, speaker, extractor, and chat engine creation.
-9. Reuse foundational runtime dependencies through `RuntimeParts.fork()` so CLI and tools do not rebuild the base graph from scratch.
-10. Support incremental dependency overrides on top of forked runtime parts so tests and alternate entrypoints can swap only the pieces they need.
-11. Synchronize runtime-owned wrapper files through the same mirror tooling so the compatibility layer stays mechanical instead of hand-maintained.
-12. Drive wrapper guardrails from the runtime-owned manifest entries so source/runtime wrapper pairs stay aligned without duplicate test lists.
-13. Derive runtime layer documentation checks from the mirror manifest so packaging docs and wrapper docs drift less easily.
-14. Keep `include` and `runtime_owned` under the same default mirror/report path so wrapper drift is caught by the standard runtime sync flow.
-15. Extract markdown-backed session and relation stores behind repository-style interfaces so chat and relation extraction stop persisting those assets directly.
-16. Route relation graph visualization export through an injected exporter so extraction and rendering can evolve independently.
-17. Keep removing duplicated expression logic so runtime wrappers stay thin and shared modules remain the only place that owns behavior.
+1. Create a dedicated shared helper area for novel text loading, decoding,
+   sentence splitting, chunking, and excerpt preparation.
+2. Ship those helpers inside the skill as standalone scripts the host can call
+   directly.
+3. Add helper scripts for:
+   - loading and transcoding raw novel text
+   - building prompt-sized excerpts
+   - normalizing output file names and directories
+   - exporting compact structured payloads for prompts
+4. Keep helper scripts stateless and file-oriented so hosts can compose them
+   without importing the CLI.
+5. Add focused tests for helper behavior on Chinese text, encoding edge cases,
+   and excerpt boundaries.
 
-## P2: Reliability And Developer Experience
+## P2: Shrink The Skill Package
 
-Status: in progress
+Status: completed
 
 Goals:
-- Make failures easier to diagnose.
-- Reduce accidental regressions.
+- Remove the skill's dependency on a bundled CLI runtime.
+- Keep only prompt assets, references, examples, and helper scripts.
 
 Tasks:
-1. Improve type coverage and enable `mypy`.
-2. Add targeted retries for LLM requests with exponential backoff.
-3. Add lightweight read-through caching for config, rules, and profile bundles.
-4. Expand unit coverage and wire automated test execution into CI.
-5. Add explicit LLM capability guards beyond CLI entrypoints so direct internal callers cannot silently bypass LLM-first preflight.
+1. Stop documenting `runtime/zaomeng_cli.py` as the preferred skill execution
+   path.
+2. Remove runtime-mirror assumptions from packaging docs and tests.
+3. Replace runtime-oriented manifest entries with prompt/helper-oriented ones.
+4. Move any still-useful runtime utilities into shared core or skill helpers.
+5. Remove runtime mirror tooling after the skill package no longer ships a
+   bundled runtime.
 
-## P2.5: LLM-First Runtime And Persona Quality
+## P3: Make CLI A Standalone Product Layer
 
-Status: in progress
+Status: completed
 
 Goals:
-- Make LLM availability a hard prerequisite for real skill workflows.
-- Remove remaining template-heavy expression paths.
-- Keep persona fields differentiated without relying on large authored rule corpora.
+- Let the CLI evolve independently from the skill package.
+- Keep its UX, subcommands, and local automation without forcing those concerns
+  into the skill bundle.
 
 Tasks:
-1. Continue shrinking rule-authored Chinese prose so `rules/*.md` keep routing, extraction, and boundary signals only.
-2. Reduce `src/modules/speaker.py` fallback output into a minimal constraint sketch instead of a polished pseudo-final reply.
-3. Move more final phrasing responsibility to the LLM rewrite/generation layer and keep fallback logic strictly structural.
-4. Replace remaining long default prose in `src/modules/distillation.py` with shorter evidence-driven labels and heuristics.
-5. Audit persona field generation for overlap risk and keep tests focused on distinction, evidence coverage, and non-empty structured output rather than exact canned wording.
-6. Keep host-provided LLM reuse as the first path in embedded runtimes and avoid duplicate model configuration when running inside OpenClaw, Hermes, or similar hosts.
-7. Add stronger regression coverage using real Chinese novel samples to check profile completeness, cross-character differentiation, relation extraction quality, and chat persona fidelity.
-8. Ensure the skill refuses to start distillation/chat/extract flows when no generation-capable LLM is available, with a clear configuration hint instead of any rule-mode fallback.
-9. Revisit speaker memory/relation guidance packing so prompts carry high-signal persona constraints without dumping redundant field text into the generation context.
-10. Keep packaging docs and skill docs aligned with the LLM-first contract so user-facing guidance never suggests a "continue in rule mode" path.
+1. Move argparse entrypoints and session-oriented orchestration behind a
+   dedicated CLI layer.
+2. Keep interactive chat/session UX as CLI-only behavior.
+3. Make the CLI consume shared prompts/helpers/core modules rather than owning
+   duplicated logic.
+4. Split CLI packaging, docs, and tests from skill packaging checks.
 
-## P3: Scale-Oriented Enhancements
+## P4: Consolidate Shared Core
 
-Status: planned
+Status: completed
 
 Goals:
-- Prepare for larger novels and longer-running runtime usage.
+- Reuse domain logic without coupling it to either the skill shell or the CLI
+  shell.
+- Keep the genuinely reusable pieces in one place.
 
 Tasks:
-1. Add chunk-level parallelism for safe high-cost processing stages.
-2. Introduce streaming or incremental parsing for very large inputs.
-3. Add optional hot-reload for config and rule files after caching is stable.
-4. Expose metrics only if the project moves toward a long-running service mode.
+1. Separate CLI-only modules from reusable core modules.
+2. Keep host LLM integration in shared core so both CLI and host-driven skill
+   flows can reuse it.
+3. Centralize prompt assembly, output parsing, storage helpers, and relation
+   rendering helpers.
+4. Continue improving contracts for sessions, relations, visualization, and
+   persistence only where they remain useful outside the CLI.
+
+## P5: Quality And Reliability
+
+Status: completed
+
+Goals:
+- Preserve current behavior quality while the architecture shifts.
+- Keep regressions visible as responsibilities move.
+
+Tasks:
+1. Expand regression coverage for:
+   - text decoding
+   - excerpt preparation
+   - profile completeness
+   - cross-character differentiation
+   - relation extraction quality
+   - persona fidelity in chat
+2. Keep LLM availability as a hard prerequisite for real generation flows.
+3. Continue reducing authored fallback prose and keep rules structural.
+4. Validate that skill docs, release docs, and packaging docs all describe the
+   same architecture.
 
 ## Non-Goals For Now
 
+- No heavy DI framework.
 - No Git submodule split.
-- No heavy dependency injection framework.
-- No full plugin platform in the current phase.
-- No Prometheus integration until service-style deployment becomes a real need.
+- No plugin system redesign in this phase.
+- No service-style metrics stack while the project is still CLI/skill oriented.

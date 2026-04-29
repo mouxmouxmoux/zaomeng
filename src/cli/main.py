@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-"""Backward-compatible CLI wrapper."""
+"""Standalone CLI entrypoint."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
-from src.core.cli_app import ChatIntent, ZaomengCLI as _SharedZaomengCLI
+from src.cli.app import ChatIntent, ZaomengCLI as _SharedZaomengCLI
 from src.modules.chat_engine import ChatEngine  # Backward-compatible patch target for tests/tools.
 
 

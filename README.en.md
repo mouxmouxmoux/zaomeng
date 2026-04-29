@@ -19,7 +19,7 @@ The current recommended direction is:
 
 - markdown-first storage: character and relation data no longer treat legacy JSON as the source of truth
 - natural-language first: distill first, then enter `act` / `observe` through natural-language intent
-- embedded minimal runtime in the skill package: `clawhub-zaomeng-skill` now ships with a packaged minimal runtime
+- prompt-first skill packaging: `clawhub-zaomeng-skill` now centers on prompts, references, and helper scripts, with runtime kept only for transitional compatibility
 - layered constraints: `output_schema.md` handles format, `style_differ.md` handles anti-homogenization, and `logic_constraint.md` handles persona-stability and anti-OOC rules
 - LLM-first workflow: distillation, extraction, and chat all require a generation-capable LLM; rules now mainly provide extraction signals, routing hints, and guardrails
 - host-first reuse: when OpenClaw, Hermes, or another agent host already provides an LLM through `HostContext`, reuse it directly before asking for standalone runtime config
@@ -34,9 +34,8 @@ Chat, distillation, and relationship extraction now follow the same **LLM-first*
 
 Capability resolution order:
 
-- in-process host injection through `HostContext`
-- environment variables or direct config such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `OLLAMA_MODEL`, or `runtime/config.yaml`
-- if no generation-capable LLM is available, the workflow stops and asks for model configuration instead of falling back to a rule-only chat path
+- skill / host path: reuse the in-process host LLM through `HostContext`
+- if no generation-capable LLM is available, the workflow stops instead of falling back to a rule-only chat path
 
 Minimal in-process host example:
 
@@ -72,8 +71,8 @@ You can choose the installation path that matches how you want to use it.
 
 Important:
 
-- the current `clawhub-zaomeng-skill` package includes an embedded minimal runtime, so runtime cloning is no longer the primary path
-- `openclaw skills install ...` and `clawhub ... install ...` install the skill package; `clawhub-zaomeng-skill` includes the packaged runtime plus documentation
+- the current `clawhub-zaomeng-skill` package installs as a prompt-first skill by default
+- `openclaw skills install ...` and `clawhub ... install ...` install the skill package; prompts, references, examples, and helper scripts are the primary assets
 - if the host cannot execute local Python commands, or lacks required dependencies, the real workflow still cannot run
 - if you want to modify code, run tests, or use the main repository CLI directly, cloning the repository is still the best option
 
@@ -95,7 +94,7 @@ openclaw skills install wkbin/zaomeng-skill
 ```
 
 This installs the skill package, not the full `zaomeng` development repository.  
-The current `clawhub-zaomeng-skill` package includes an embedded minimal runtime, so hosts that allow local command execution can use the packaged runtime directly.
+The default package is prompt-first; add transitional runtime assets only when an older host flow still needs them.
 
 ### 3. Install with ClawHub
 
@@ -114,7 +113,7 @@ bunx clawhub@latest install zaomeng-skill
 ```
 
 Again, this installs the skill package, not the full local `zaomeng` development repository.
-The current `clawhub-zaomeng-skill` package includes an embedded minimal runtime, so hosts that allow local command execution can use the packaged runtime directly.
+The default package is prompt-first; add transitional runtime assets only when an older host flow still needs them.
 
 ### 4. Install into an existing local skills directory
 
@@ -123,6 +122,8 @@ If your own project already has a `skills/` directory, you can also install the 
 ```bash
 python scripts/install_skill.py --skills-dir <your-skills-root>
 ```
+
+This installs the prompt-first skill package.
 
 ## Runtime Requirement
 
@@ -141,13 +142,13 @@ For local guardrails, use the bundled development check entrypoint:
 python scripts/dev_checks.py
 ```
 
-This now includes a targeted `mypy` pass for the runtime mirror and packaging guardrails:
+This now includes a targeted `mypy` pass for prompt-first packaging, helper scripts, and compatibility guardrails:
 
 ```bash
 python -m mypy --config-file mypy.ini
 ```
 
-For a faster preflight pass that only runs mirror validation plus the runtime and packaging smoke checks:
+For a faster preflight pass that only runs the prompt-first smoke guardrails:
 
 ```bash
 python scripts/dev_checks.py --smoke-only
@@ -530,14 +531,6 @@ python -m src.core.main chat --novel data/sanguo.txt --mode auto --message "进�
 python -m src.core.main chat --novel data/sanguo.txt --session <session_id> --message "刘备：二位贤弟，近日战事稍歇。"
 ```
 
-If you are using the packaged runtime inside `clawhub-zaomeng-skill`, the corresponding entrypoint is:
-
-```bash
-py -3 runtime/zaomeng_cli.py distill --novel <path> --characters A,B
-py -3 runtime/zaomeng_cli.py extract --novel <path>
-py -3 runtime/zaomeng_cli.py chat --novel <path-or-name> --mode auto --message "让我扮演A和B聊天"
-```
-
 ## Other Commands
 
 ### View a character profile
@@ -559,24 +552,30 @@ python -m src.core.main correct \
 ## Command Overview
 
 ```bash
-python -m src.core.main distill --novel <path> [--characters A,B] [--output <dir>] [--force]
-python -m src.core.main extract --novel <path> [--output <path>] [--force]
-python -m src.core.main chat --novel <path-or-name> --mode auto|observe|act [--character <name>] [--session <id>] [--message <text>]
-python -m src.core.main view --character <name> [--novel <path-or-name>]
-python -m src.core.main correct --session <id> --message <raw> --corrected <fixed> [--character <name>] [--target <name>] [--reason <text>]
+python -m src.cli.main distill --novel <path> [--characters A,B] [--output <dir>] [--force]
+python -m src.cli.main extract --novel <path> [--output <path>] [--force]
+python -m src.cli.main chat --novel <path-or-name> --mode auto|observe|act [--character <name>] [--session <id>] [--message <text>]
+python -m src.cli.main view --character <name> [--novel <path-or-name>]
+python -m src.cli.main correct --session <id> --message <raw> --corrected <fixed> [--character <name>] [--target <name>] [--reason <text>]
 ```
+
+`src.core.main` remains as a backward-compatible wrapper.
 
 ## Project Structure
 
-The current layout separates shared implementation from thin compatibility wrappers:
+The current layout separates standalone CLI code, shared core code, and the prompt-first skill package:
 
-- shared core implementation lives in files such as `src/core/cli_app.py`, `src/core/runtime_parts.py`, and `src/core/logging_setup.py`
-- thin compatibility wrappers remain in `src/core/main.py`, `src/core/runtime_factory.py`, and `src/core/logging_utils.py`
-- the packaged runtime mirrors the shared implementation under `clawhub-zaomeng-skill/runtime/src/` while keeping its own thin wrappers
+- standalone CLI code now lives under `src/cli/`
+- shared core implementation lives in files such as `src/core/runtime_parts.py` and `src/core/logging_setup.py`
+- thin compatibility wrappers remain in `src/core/main.py`, `src/core/cli_app.py`, `src/core/runtime_factory.py`, and `src/core/logging_utils.py`
+- the skill package centers on `prompts/`, `references/`, `examples/`, and `tools/`, while `runtime/` remains transitional compatibility only
 
 ```text
 Dreamforge/
 ├─ src/                          # main source code
+│  ├─ cli/                       # standalone CLI layer
+│  │  ├─ app.py
+│  │  └─ main.py
 │  ├─ core/                      # entrypoint, config, dependency wiring, rule loading
 │  │  ├─ main.py
 │  │  ├─ config.py
@@ -594,6 +593,9 @@ Dreamforge/
 │     ├─ file_utils.py
 │     ├─ text_parser.py
 │     └─ token_counter.py
+├─ src/skill_support/            # prompt-first skill helpers
+│  ├─ novel_preparation.py
+│  └─ prompt_payloads.py
 ├─ rules/                        # repository-level editable rule files
 │  ├─ distillation_rules.md
 │  └─ relationship_rules.md
@@ -607,7 +609,8 @@ Dreamforge/
 │  ├─ prompts/                   # packaged prompt templates
 │  ├─ references/                # schema, anti-homogenization, logic constraints
 │  ├─ examples/                  # sample persona and relation outputs
-│  └─ runtime/                   # packaged minimal runtime
+│  ├─ tools/                     # helper scripts for prompt-first host flows
+│  └─ runtime/                   # transitional compatibility runtime
 │     ├─ zaomeng_cli.py
 │     ├─ requirements.txt
 │     ├─ rules/

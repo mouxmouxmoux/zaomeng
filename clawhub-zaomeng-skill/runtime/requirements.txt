@@ -1,7 +1,0 @@
-PyYAML>=6.0
-
-# Optional: improves token counting accuracy.
-tiktoken>=0.5.0
-
-# Optional: only required when the novel input is .epub.
-ebooklib>=0.18

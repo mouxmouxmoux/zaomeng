@@ -14,18 +14,16 @@ class CIWorkflowTests(unittest.TestCase):
     def test_dev_checks_exposes_smoke_mode_and_guardrail_suite(self):
         script_text = Path("scripts/dev_checks.py").read_text(encoding="utf-8")
         self.assertIn("--smoke-only", script_text)
-        self.assertIn("tests.test_runtime_mirror", script_text)
-        self.assertIn("tests.test_runtime_entrypoint", script_text)
-        self.assertIn("tests.test_runtime_wrappers", script_text)
+        self.assertIn("tests.test_cli_structure", script_text)
+        self.assertIn("tests.test_install_skill", script_text)
+        self.assertIn("tests.test_novel_preparation", script_text)
+        self.assertIn("tests.test_prompt_payloads", script_text)
         self.assertIn("tests.test_packaging_docs", script_text)
         self.assertIn('"run mypy"', script_text)
         self.assertIn('"mypy.ini"', script_text)
 
     def test_mypy_config_targets_guardrail_modules(self):
         config_text = Path("mypy.ini").read_text(encoding="utf-8")
-        self.assertIn("scripts/check_runtime_mirror.py", config_text)
-        self.assertIn("tests/test_runtime_mirror.py", config_text)
-        self.assertIn("tests/test_runtime_wrappers.py", config_text)
         self.assertIn("tests/test_packaging_docs.py", config_text)
         self.assertIn("tests/test_ci_workflow.py", config_text)
         self.assertIn("src/core/contracts.py", config_text)

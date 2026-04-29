@@ -3,59 +3,52 @@
 import unittest
 from pathlib import Path
 
-from scripts.check_runtime_mirror import (
-    load_documented_runtime_wrapper_paths,
-    load_documented_shared_runtime_core_paths,
-    load_managed_runtime_paths,
-)
-
 
 class PackagingDocsTests(unittest.TestCase):
-    def test_manifest_mentions_shared_runtime_core_modules(self):
+    def test_manifest_describes_prompt_first_bundle(self):
         manifest_text = Path("clawhub-zaomeng-skill/MANIFEST.md").read_text(encoding="utf-8")
-        for entry in load_documented_shared_runtime_core_paths():
-            self.assertIn(entry, manifest_text)
+        self.assertIn("tools/prepare_novel_excerpt.py", manifest_text)
+        self.assertIn("tools/build_prompt_payload.py", manifest_text)
+        self.assertIn("人物关系图谱", manifest_text)
+        self.assertNotIn("runtime/zaomeng_cli.py", manifest_text)
+        self.assertNotIn("runtime/src", manifest_text)
 
-    def test_install_and_skill_docs_describe_wrapper_split(self):
+    def test_install_docs_describe_prompt_first_install_and_optional_runtime(self):
         install_text = Path("clawhub-zaomeng-skill/INSTALL.md").read_text(encoding="utf-8")
-        skill_text = Path("clawhub-zaomeng-skill/SKILL.md").read_text(encoding="utf-8")
-        for entry in load_documented_runtime_wrapper_paths():
-            self.assertIn(entry, install_text)
-            self.assertIn(entry, skill_text)
-        for entry in load_documented_shared_runtime_core_paths():
-            self.assertIn(entry, install_text)
-            self.assertIn(entry, skill_text)
+        self.assertIn("宿主驱动的 skill 包", install_text)
+        self.assertIn("tools/prepare_novel_excerpt.py", install_text)
+        self.assertIn("tools/build_prompt_payload.py", install_text)
+        self.assertNotIn("runtime/src", install_text)
+        self.assertNotIn("--include-runtime", install_text)
 
-    def test_readmes_describe_shared_and_wrapper_runtime_layers(self):
+    def test_readmes_describe_prompt_first_helpers_and_cli_separation(self):
+        root_readme = Path("README.md").read_text(encoding="utf-8")
         root_readme_en = Path("README.en.md").read_text(encoding="utf-8")
         skill_readme = Path("clawhub-zaomeng-skill/README.md").read_text(encoding="utf-8")
         skill_readme_en = Path("clawhub-zaomeng-skill/README_EN.md").read_text(encoding="utf-8")
 
-        self.assertIn("src/core/runtime_parts.py", root_readme_en)
-        self.assertIn("src/core/logging_utils.py", root_readme_en)
-        self.assertIn("HostContext", root_readme_en)
-        for entry in load_documented_runtime_wrapper_paths():
-            self.assertIn(entry, skill_readme)
-            self.assertIn(entry, skill_readme_en)
-        for entry in load_documented_shared_runtime_core_paths():
-            self.assertIn(entry, skill_readme)
-            self.assertIn(entry, skill_readme_en)
+        self.assertIn("tools/prepare_novel_excerpt.py", skill_readme)
+        self.assertIn("tools/build_prompt_payload.py", skill_readme)
+        self.assertIn("tools/prepare_novel_excerpt.py", skill_readme_en)
+        self.assertIn("tools/build_prompt_payload.py", skill_readme_en)
+        self.assertNotIn("runtime/zaomeng_cli.py", skill_readme)
+        self.assertNotIn("runtime/zaomeng_cli.py", skill_readme_en)
 
-    def test_skill_docs_keep_openclaw_on_the_shared_packaged_skill(self):
+    def test_skill_docs_prioritize_host_llm_without_env_preflight(self):
         clawhub_skill = Path("clawhub-zaomeng-skill/SKILL.md").read_text(encoding="utf-8")
+        skill_readme = Path("clawhub-zaomeng-skill/README.md").read_text(encoding="utf-8")
+        skill_readme_en = Path("clawhub-zaomeng-skill/README_EN.md").read_text(encoding="utf-8")
 
-        self.assertIn("runtime/config.yaml", clawhub_skill)
-        self.assertIn("local-rule-engine", clawhub_skill)
-        self.assertIn("不要因为运行时没单独填写 `runtime/config.yaml` 就停下来让用户二选一", clawhub_skill)
-        self.assertIn("不要提示“去配置 runtime/config.yaml 才能继续群聊”", clawhub_skill)
-        self.assertIn(
-            "不要在 OpenClaw 中因为看到 `llm.provider=local-rule-engine` 就要求用户去改 `runtime/config.yaml`",
-            clawhub_skill,
-        )
-        self.assertIn("LLM-first", clawhub_skill)
-        self.assertIn("LLM preflight", clawhub_skill)
-        self.assertIn("Ollama", clawhub_skill)
-        self.assertIn("请先确认宿主已经提供模型能力", clawhub_skill)
+        self.assertIn("宿主负责实际生成", clawhub_skill)
+        self.assertIn("tools/prepare_novel_excerpt.py", clawhub_skill)
+        self.assertIn("tools/build_prompt_payload.py", clawhub_skill)
+        self.assertIn("宿主负责实际调用模型", skill_readme)
+        self.assertIn("人物关系图谱", clawhub_skill)
+        self.assertIn("人物关系图谱", skill_readme)
+        self.assertIn("relationship graphs", skill_readme_en)
+        self.assertNotIn("runtime/config.yaml", clawhub_skill)
+        self.assertNotIn("OPENAI_API_KEY", clawhub_skill)
+        self.assertNotIn("runtime/zaomeng_cli.py", clawhub_skill)
 
     def test_distillation_docs_require_multi_character_differentiation(self):
         prompt_text = Path("clawhub-zaomeng-skill/prompts/distill_prompt.md").read_text(encoding="utf-8")
@@ -77,11 +70,6 @@ class PackagingDocsTests(unittest.TestCase):
         self.assertIn("moral_bottom_line", prompt_text)
         self.assertIn("self_cognition", prompt_text)
         self.assertIn("rules/character_hints/<novel_id>.md", prompt_text)
-
-    def test_manifest_lists_all_managed_runtime_python_files(self):
-        manifest_text = Path("clawhub-zaomeng-skill/MANIFEST.md").read_text(encoding="utf-8")
-        for entry in load_managed_runtime_paths():
-            self.assertIn(entry, manifest_text)
 
 
 if __name__ == "__main__":

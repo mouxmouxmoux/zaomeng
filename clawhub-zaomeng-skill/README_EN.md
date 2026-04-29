@@ -2,25 +2,13 @@
 
 `zaomeng-skill` is a skill package for Chinese novel character distillation, relationship extraction, one-on-one roleplay, and group character chat.
 
-It is not a generic chat template. It is an **LLM-first** workflow built around one principle: distill first, then let characters speak according to their profiles.
+Its operating model is straightforward:
 
-More precisely:
-
-- `zaomeng` is responsible for character distillation, relationship extraction, persona navigation, persistent memory, and OOC constraints
-- distillation, extraction, and chat all require a generation-capable LLM; rules now mainly provide extraction signals, routing hints, and guardrails
-- when the host already provides an LLM, reuse that host capability first instead of asking for a separate runtime model setup
+- read the novel content
+- prepare excerpts, prompts, and references
+- hand them to the host LLM for distillation, relation extraction, and dialogue generation
 
 License: `MIT-0` (MIT No Attribution)
-
-## What's New In This Version
-
-The current release line is `3.3.0`. The main changes are:
-
-- markdown-first persona and relation workflows remain the default
-- `RuntimeParts` now centralizes embedded-runtime composition, lazy loading, dependency reuse, and incremental overrides
-- thin runtime wrappers and mirrored shared modules now share the same mirror, wrapper, and packaging guardrails
-- Windows CI path resolution and console encoding issues are fixed
-- real LLM chat generation, ordered group-chat interactions, and optional silence for low-relevance characters remain supported
 
 ## Dialogue Generation
 
@@ -30,39 +18,7 @@ Chat, distillation, and relationship extraction now follow the same **LLM-first*
 - a generation-capable LLM produces the final reply
 - in group chat, later speakers can see replies already produced earlier in the same turn
 
-Capability resolution order:
-
-- reuse an in-process host LLM provided through `HostContext`
-- otherwise use environment variables or `runtime/config.yaml`
-- if no generation-capable LLM is available, stop the workflow and ask for model configuration instead of falling back to rule-only chat
-
-Minimal host integration example:
-
-```python
-from src.core.runtime_factory import HostProvidedLLM, RuntimeDependencyOverrides, build_runtime_parts
-
-host_llm = HostProvidedLLM.from_host_context(context, provider_name="openclaw-host")
-parts = build_runtime_parts(overrides=RuntimeDependencyOverrides(llm=host_llm))
-```
-
-Example configuration:
-
-```yaml
-llm:
-  provider: "openai"               # or openai-compatible / anthropic / ollama
-  model: "gpt-4.1-mini"
-  api_key: ""
-  api_key_env: "OPENAI_API_KEY"
-  base_url: ""
-  temperature: 0.7
-  max_tokens: 300
-
-chat_engine:
-  generation_mode: "llm-only"
-  enable_turn_interactions: true
-  allow_character_silence: true
-  min_reply_relevance: 4
-```
+This skill assumes a host-managed LLM execution environment.
 
 ## What It Does
 
@@ -135,16 +91,21 @@ To run the real workflow, the host environment should support:
 - `ebooklib` when reading `.epub`
 - optional `tiktoken` for more accurate token estimation
 
-The packaged runtime entrypoint inside the skill is:
+The skill now exposes prompt-first helper entrypoints:
 
 ```text
-runtime/zaomeng_cli.py
+tools/prepare_novel_excerpt.py
+tools/build_prompt_payload.py
 ```
 
-The runtime source tree is split into two layers:
+A common prompt-first flow is to prepare an excerpt first and then build a host-side prompt payload.
 
-- thin runtime-owned wrappers: `runtime/src/core/main.py`, `runtime/src/core/runtime_factory.py`, `runtime/src/core/logging_utils.py`
-- mirrored shared implementation: `runtime/src/core/cli_app.py`, `runtime/src/core/runtime_parts.py`, `runtime/src/core/logging_setup.py`, plus shared `modules/` and `utils/`
+For example:
+
+```bash
+py -3 tools/prepare_novel_excerpt.py --novel <path>
+py -3 tools/build_prompt_payload.py --mode distill --novel <path> --characters A,B
+```
 
 ## Recommended Usage Flow
 
@@ -189,21 +150,9 @@ Enter Liu Bei, Zhang Fei, Guan Yu group chat mode
 Let everyone say one line about the alliance with Sun Quan
 ```
 
-## CLI Examples
-
-If you run the packaged runtime directly, use commands like these:
-
-```bash
-py -3 runtime/zaomeng_cli.py distill --novel <path> --characters A,B
-py -3 runtime/zaomeng_cli.py extract --novel <path>
-py -3 runtime/zaomeng_cli.py chat --novel <path-or-name> --mode auto --message "Let me play A and chat with B"
-py -3 runtime/zaomeng_cli.py view --character <name> --novel <path-or-name>
-py -3 runtime/zaomeng_cli.py correct --session <id> --message <raw> --corrected <fixed> --character <name>
-```
-
 ## Persona Bundle Structure
 
-The main character storage is now a markdown persona bundle. The common directory shape is:
+Character profile directories typically follow this shape:
 
 ```text
 runtime/data/characters/<novel_id>/<character_name>/
@@ -234,7 +183,7 @@ Depending on available evidence, optional focused persona files may also be gene
 
 ## Constraint Files
 
-This version splits constraints into three layers:
+Constraints are split into three layers:
 
 - `references/output_schema.md`
   format and field contract
@@ -245,10 +194,12 @@ This version splits constraints into three layers:
 
 If you are checking output quality, these three files should be read together rather than reading only the schema.
 
-## README.md vs SKILL.md
+## Outputs
 
-- `README.md` is for users and focuses on installation, usage, and outputs
-- `SKILL.md` is for hosts and agents and focuses on execution rules, invocation constraints, and forbidden behavior
+- character profiles
+- relationship extraction results
+- relationship graphs
+- in-character dialogue replies
 
 ## Publishing Notes
 
@@ -262,7 +213,7 @@ If you publish this skill on its own, it is best to include at least:
 - `PUBLISH.md`
 - `prompts/`
 - `references/`
-- `runtime/`
+- `tools/`
 
 ## License
 
