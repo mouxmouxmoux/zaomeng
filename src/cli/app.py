@@ -29,6 +29,7 @@ from src.utils.file_utils import (
     parse_character_argument,
     save_markdown_data,
 )
+from src.utils.novel_search import format_candidate_lines, run_cli_step, search_novel_candidates
 
 
 @dataclass
@@ -245,6 +246,36 @@ class ZaomengCLI:
             help="Skip cost confirmation for non-interactive runs",
         )
 
+        find_novel_parser = subparsers.add_parser(
+            "find-novel",
+            help="Search candidate novel files by keyword via Everything",
+        )
+        find_novel_parser.add_argument("--keyword", required=True, help="Novel keyword to search")
+        find_novel_parser.add_argument("--server-id", help="Everything server id")
+        find_novel_parser.add_argument("--limit", type=int, default=10, help="Max candidate count")
+        find_novel_parser.add_argument("--offset", type=int, default=0, help="Search result offset")
+        find_novel_parser.add_argument("--results-file", help="Load prebuilt candidate lines from UTF-8 text file")
+
+        run_flow_parser = subparsers.add_parser(
+            "run-novel-flow",
+            help="Search novel by keyword, select one file, then run distill/extract/chat",
+        )
+        run_flow_parser.add_argument("--keyword", required=True, help="Novel keyword to search")
+        run_flow_parser.add_argument("--server-id", help="Everything server id")
+        run_flow_parser.add_argument("--limit", type=int, default=10, help="Max candidate count")
+        run_flow_parser.add_argument("--offset", type=int, default=0, help="Search result offset")
+        run_flow_parser.add_argument("--results-file", help="Load prebuilt candidate lines from UTF-8 text file")
+        run_flow_parser.add_argument("--select", type=int, required=True, help="Chosen candidate index")
+        run_flow_parser.add_argument("--characters", "-c", help="Comma-separated target character names")
+        run_flow_parser.add_argument("--characters-file", help="UTF-8 text file containing target character names")
+        run_flow_parser.add_argument("--message", help="Initial chat message after distill/extract")
+        run_flow_parser.add_argument("--message-file", help="UTF-8 text file containing the initial chat message")
+        run_flow_parser.add_argument("--mode", choices=["auto", "observe", "act"], default="auto", help="Chat mode")
+        run_flow_parser.add_argument("--character", help="Controlled character for act mode")
+        run_flow_parser.add_argument("--force", action="store_true", help="Pass --force to distill/extract")
+        run_flow_parser.add_argument("--session", help="Continue an existing session for chat")
+        run_flow_parser.add_argument("--dry-run", action="store_true", help="Print the chained commands without executing them")
+
         return parser
 
     def run(self) -> None:
@@ -264,6 +295,10 @@ class ZaomengCLI:
                 self._handle_correct(args)
             elif args.command == "extract":
                 self._handle_extract(args)
+            elif args.command == "find-novel":
+                self._handle_find_novel(args)
+            elif args.command == "run-novel-flow":
+                self._handle_run_novel_flow(args)
             else:
                 raise ValueError(f"Unknown command: {args.command}")
         except KeyboardInterrupt:
@@ -662,6 +697,77 @@ class ZaomengCLI:
         graph_path = self.path_provider.visualization_file(novel_id, ".html")
         print(f"图谱链接: {graph_path}")
         print("你现在可以查看关系图谱，或进入 act 模式 / observe 模式继续。")
+
+    def _handle_find_novel(self, args: argparse.Namespace) -> None:
+        print("=== Novel Search ===")
+        results = search_novel_candidates(
+            args.keyword,
+            server_id=args.server_id or "",
+            limit=args.limit,
+            offset=args.offset,
+            results_file=args.results_file,
+        )
+        if not results:
+            print("没找到候选文件。")
+            return
+
+        print("候选文件")
+        for line in format_candidate_lines(results):
+            print(line)
+        print("请确认要用哪个文件")
+        print("确认后把路径传给 distill / extract / chat 就行")
+
+    def _handle_run_novel_flow(self, args: argparse.Namespace) -> None:
+        print("=== Novel Flow ===")
+        results = search_novel_candidates(
+            args.keyword,
+            server_id=args.server_id or "",
+            limit=args.limit,
+            offset=args.offset,
+            results_file=args.results_file,
+        )
+        if not results:
+            print("没找到候选文件。")
+            return
+
+        print("候选文件")
+        for line in format_candidate_lines(results):
+            print(line)
+
+        selected = next((item for item in results if item.index == args.select), None)
+        if selected is None:
+            raise ValueError(f"未找到编号 {args.select} 对应的候选文件。")
+
+        novel_path = selected.path
+        print(f"已选择文件: {novel_path}")
+
+        characters_text = load_text_argument(args.characters, getattr(args, "characters_file", None))
+        message_text = load_text_argument(args.message, getattr(args, "message_file", None))
+
+        distill_parts = ["distill", "--novel", novel_path]
+        extract_parts = ["extract", "--novel", novel_path]
+        if characters_text:
+            distill_parts.extend(["--characters", characters_text])
+            extract_parts.extend(["--characters", characters_text])
+        if args.force:
+            distill_parts.append("--force")
+            extract_parts.append("--force")
+
+        chat_parts: list[str] = []
+        if message_text:
+            chat_parts = ["chat", "--novel", novel_path, "--mode", args.mode, "--message", message_text]
+            if args.character:
+                chat_parts.extend(["--character", args.character])
+            if args.session:
+                chat_parts.extend(["--session", args.session])
+
+        planned = [distill_parts, extract_parts]
+        if chat_parts:
+            planned.append(chat_parts)
+
+        workdir = str(Path(__file__).resolve().parents[2])
+        for parts in planned:
+            run_cli_step(parts, workdir=workdir, dry_run=args.dry_run)
 
     @staticmethod
     def _print_distill_progress(stage: str, payload: dict[str, Any]) -> None:
