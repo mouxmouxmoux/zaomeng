@@ -21,13 +21,15 @@
 
 修正时优先参考角色人格包中的以下信息：
 
-- `PROFILE` 总档
-- `SOUL` 的核心原则与边界
-- `STYLE` 的语言习惯与节奏
-- `BONDS` 与 `RELATIONS` 的对人差异
-- `CONFLICTS` 的软肋、雷点、内在冲突
-- `ROLE` 的立场稳定度与剧情职能
-- `MEMORY` 的用户纠正与持续修订
+- `PROFILE` 总档中的 canonical 字段
+- `Basic Positioning` / `Root Layer` / `Inner Core` 提供身份、动机、信念与边界
+- `Thinking And Decision` / `Emotion And Stress` 提供决策逻辑、雷点与应激惯性
+- `Social Pattern` 与 `RELATIONS` 提供对人差异、关系落点与隐藏态度
+- `Voice` 提供语言习惯、节奏、句式偏好与禁用填充词
+- `Performance Boundary` 提供绝对不能越线的 OOC 红线
+- `Evidence` 与 `MEMORY` 提供用户纠正、时间线说明与持续修订依据
+
+若人格包同时存在 `SOUL.generated.md`、`STYLE.generated.md`、`BONDS.generated.md`、`CONFLICTS.generated.md`、`ROLE.generated.md` 等聚焦文件，可将其视为对 canonical `PROFILE` 的补充展开，而不是替代来源。
 
 ## 重点校验维度
 
@@ -36,9 +38,10 @@
 3. 是否违背说话风格、用词习惯、语气节奏
 4. 是否违背价值取舍、决策逻辑、行为底线
 5. 是否忽略特定关系对象的专属态度
-6. 是否落入通用套话、万能过渡句、AI 模板腔
-7. 是否把私下真实面貌和公开人格混用错位
-8. 是否在情绪反应上过猛或过弱，脱离人物惯性
+6. 是否违背 `carry_style`、`private_self`、`disguise_switch` 或 `ooc_redline`
+7. 是否落入通用套话、万能过渡句、AI 模板腔
+8. 是否把私下真实面貌和公开人格混用错位
+9. 是否在情绪反应上过猛或过弱，脱离人物惯性
 
 ## 规则
 
