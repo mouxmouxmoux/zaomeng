@@ -38,6 +38,93 @@ class ChatEngine:
 
     SYSTEM_SPEAKERS = {"Narrator", "User", "旁白", "用户"}
     ADDRESS_SUFFIXES = ("哥哥", "姐姐", "妹妹", "弟弟", "姑娘", "公子", "爷")
+    PERSONA_LIST_FIELDS = {
+        "role_tags",
+        "core_traits",
+        "typical_lines",
+        "decision_rules",
+        "life_experience",
+        "preference_like",
+        "dislike_hate",
+        "strengths",
+        "weaknesses",
+        "cognitive_limits",
+        "fear_triggers",
+        "key_bonds",
+        "taboo_topics",
+        "forbidden_behaviors",
+    }
+    PERSONA_SCALAR_FIELDS = {
+        "timeline_stage",
+        "speech_style",
+        "identity_anchor",
+        "soul_goal",
+        "trauma_scar",
+        "worldview",
+        "thinking_style",
+        "temperament_type",
+        "core_identity",
+        "faction_position",
+        "world_belong",
+        "background_imprint",
+        "world_rule_fit",
+        "rule_view",
+        "plot_restriction",
+        "appearance_feature",
+        "habit_action",
+        "social_mode",
+        "carry_style",
+        "hidden_desire",
+        "interest_claim",
+        "resource_dependence",
+        "trade_principle",
+        "inner_conflict",
+        "story_role",
+        "belief_anchor",
+        "moral_bottom_line",
+        "self_cognition",
+        "stress_response",
+        "emotion_model",
+        "others_impression",
+        "restraint_threshold",
+        "private_self",
+        "disguise_switch",
+        "stance_stability",
+        "reward_logic",
+        "action_style",
+        "arc_type",
+        "arc_blocker",
+        "ooc_redline",
+        "evidence_source",
+        "contradiction_note",
+        "arc_summary",
+    }
+    PERSONA_METRIC_FIELDS = {"values"}
+    PERSONA_INT_FIELDS = {"arc_confidence"}
+    PERSONA_NESTED_FIELDS = {
+        "cadence": ("speech_habits", "cadence", "scalar"),
+        "signature_phrases": ("speech_habits", "signature_phrases", "list"),
+        "sentence_openers": ("speech_habits", "sentence_openers", "list"),
+        "connective_tokens": ("speech_habits", "connective_tokens", "list"),
+        "sentence_endings": ("speech_habits", "sentence_endings", "list"),
+        "forbidden_fillers": ("speech_habits", "forbidden_fillers", "list"),
+        "anger_style": ("emotion_profile", "anger_style", "scalar"),
+        "joy_style": ("emotion_profile", "joy_style", "scalar"),
+        "grievance_style": ("emotion_profile", "grievance_style", "scalar"),
+        "arc_start": ("arc", "start", "metric"),
+        "arc_mid": ("arc", "mid", "metric"),
+        "arc_end": ("arc", "end", "metric"),
+        "description_count": ("evidence", "description_count", "int"),
+        "dialogue_count": ("evidence", "dialogue_count", "int"),
+        "thought_count": ("evidence", "thought_count", "int"),
+        "chunk_count": ("evidence", "chunk_count", "int"),
+    }
+    GUIDANCE_SECTION_LABELS = (
+        ("style_rules", "风格约束"),
+        ("behavior_rules", "行为约束"),
+        ("relation_rules", "关系约束"),
+        ("memory_cues", "记忆约束"),
+    )
 
     def __init__(
         self,
@@ -215,7 +302,7 @@ class ChatEngine:
         if not message:
             raise ValueError("消息不能为空。")
 
-        session["history"].append({"speaker": speaker, "message": message, "ts": int(time.time())})
+        self._append_history_entry(session, speaker=speaker, message=message)
         self._persist_runtime_guidance(session, speaker, message)
         self._remember_focus_targets(session, speaker, responders)
         profiles = self._load_character_profiles(session.get("novel_id"))
@@ -223,32 +310,65 @@ class ChatEngine:
 
         responses: List[tuple[str, str]] = []
         for name in ordered_responders:
-            if self._should_skip_reply(session, speaker, name, message, responses):
-                continue
-            profile = profiles.get(name, {"name": name})
-            target_name = self._resolve_turn_target(session, speaker, name, message, responses)
-            relation_state = self._get_relation_state(session, name, target_name)
-            reply = self._generate_reply(
+            turn_reply = self._collect_turn_reply(
                 session=session,
                 speaker=speaker,
                 responder=name,
-                profile=profile,
                 message=message,
-                target_name=target_name,
-                relation_state=relation_state,
                 prior_responses=responses,
+                profiles=profiles,
             )
-            if not reply:
+            if not turn_reply:
                 continue
-            responses.append((name, reply))
-            session["history"].append(
-                {"speaker": name, "target": target_name, "message": reply, "ts": int(time.time())}
-            )
+            responses.append(turn_reply)
 
         self._trim_history(session)
         self._update_state(session)
         self._save_session(session)
         return responses
+
+    @staticmethod
+    def _append_history_entry(
+        session: Dict[str, Any],
+        *,
+        speaker: str,
+        message: str,
+        target: str = "",
+    ) -> None:
+        entry = {"speaker": speaker, "message": message, "ts": int(time.time())}
+        if target:
+            entry["target"] = target
+        session["history"].append(entry)
+
+    def _collect_turn_reply(
+        self,
+        *,
+        session: Dict[str, Any],
+        speaker: str,
+        responder: str,
+        message: str,
+        prior_responses: List[tuple[str, str]],
+        profiles: Dict[str, Dict[str, Any]],
+    ) -> Optional[tuple[str, str]]:
+        if self._should_skip_reply(session, speaker, responder, message, prior_responses):
+            return None
+        profile = profiles.get(responder, {"name": responder})
+        target_name = self._resolve_turn_target(session, speaker, responder, message, prior_responses)
+        relation_state = self._get_relation_state(session, responder, target_name)
+        reply = self._generate_reply(
+            session=session,
+            speaker=speaker,
+            responder=responder,
+            profile=profile,
+            message=message,
+            target_name=target_name,
+            relation_state=relation_state,
+            prior_responses=prior_responses,
+        )
+        if not reply:
+            return None
+        self._append_history_entry(session, speaker=responder, target=target_name, message=reply)
+        return responder, reply
 
     def _generate_reply(
         self,
@@ -401,13 +521,23 @@ class ChatEngine:
         guidance: Dict[str, Any],
         prior_responses: List[tuple[str, str]],
     ) -> List[Dict[str, str]]:
-        style_rules = guidance.get("style_rules", [])
-        behavior_rules = guidance.get("behavior_rules", [])
-        relation_rules = guidance.get("relation_rules", [])
-        memory_cues = guidance.get("memory_cues", [])
-        corrections = guidance.get("similar_corrections", [])
+        system_lines = self._build_llm_system_lines(responder, guidance)
+        user_lines = self._build_llm_user_lines(
+            session=session,
+            speaker=speaker,
+            responder=responder,
+            message=message,
+            target_name=target_name,
+            prior_responses=prior_responses,
+        )
 
-        system_lines = [
+        return [
+            {"role": "system", "content": "\n".join(system_lines)},
+            {"role": "user", "content": "\n".join(user_lines)},
+        ]
+
+    def _build_llm_system_lines(self, responder: str, guidance: Dict[str, Any]) -> List[str]:
+        lines = [
             f"你现在只扮演 {responder}。",
             "你的任务是生成自然、流畅、去模板化的中文角色回应。",
             "只输出该角色此刻会说出的内容，不要解释规则，不要输出字段名。",
@@ -416,51 +546,64 @@ class ChatEngine:
             "严禁复读通用 AI 套话、总结腔、万能过渡句。",
             "不要照抄约束草案，要把它转成自然说话。",
         ]
-        for section_title, items in (
-            ("风格约束", style_rules),
-            ("行为约束", behavior_rules),
-            ("关系约束", relation_rules),
-            ("记忆约束", memory_cues),
-        ):
+        for key, title in self.GUIDANCE_SECTION_LABELS:
+            items = guidance.get(key, [])
             if not items:
                 continue
-            system_lines.append(f"{section_title}:")
-            system_lines.extend(f"- {item}" for item in items[:8])
-        if corrections:
-            system_lines.append("历史纠错参考:")
-            for item in corrections[:2]:
-                corrected = str(item.get("corrected_message", "")).strip()
-                reason = str(item.get("reason", "")).strip()
-                if corrected:
-                    suffix = f" | 原因: {reason}" if reason else ""
-                    system_lines.append(f"- 更接近人物的表达: {corrected}{suffix}")
+            lines.append(f"{title}:")
+            lines.extend(f"- {item}" for item in items[:8])
+        lines.extend(self._render_correction_guidance(guidance.get("similar_corrections", [])))
         fallback_reply = str(guidance.get("fallback_reply", "")).strip()
         if fallback_reply:
-            system_lines.append(f"约束草案（不要照抄）: {fallback_reply}")
+            lines.append(f"约束草案（不要照抄）: {fallback_reply}")
+        return lines
 
-        recent_window = session["history"][-self.llm_history_messages :]
-        history_lines = [f"{item.get('speaker', '')}: {item.get('message', '')}" for item in recent_window]
+    @staticmethod
+    def _render_correction_guidance(corrections: Any) -> List[str]:
+        if not isinstance(corrections, list) or not corrections:
+            return []
+        lines = ["历史纠错参考:"]
+        for item in corrections[:2]:
+            corrected = str(item.get("corrected_message", "")).strip()
+            reason = str(item.get("reason", "")).strip()
+            if not corrected:
+                continue
+            suffix = f" | 原因: {reason}" if reason else ""
+            lines.append(f"- 更接近人物的表达: {corrected}{suffix}")
+        return lines
+
+    def _build_llm_user_lines(
+        self,
+        *,
+        session: Dict[str, Any],
+        speaker: str,
+        responder: str,
+        message: str,
+        target_name: str,
+        prior_responses: List[tuple[str, str]],
+    ) -> List[str]:
+        history_lines = self._render_recent_history(session)
         turn_lines = [f"{speaker}: {message}"]
         if prior_responses:
             turn_lines.extend(f"{name}: {reply}" for name, reply in prior_responses)
 
-        user_lines = [
+        lines = [
             f"会话模式: {session.get('mode', 'observe')}",
             f"当前轮发起者: {speaker}",
             f"当前回应角色: {responder}",
             f"当前主要回应对象: {target_name or '未指定'}",
         ]
         if history_lines:
-            user_lines.append("最近对话:")
-            user_lines.extend(f"- {line}" for line in history_lines)
-        user_lines.append("本轮已发生:")
-        user_lines.extend(f"- {line}" for line in turn_lines)
-        user_lines.append("请输出 1 到 3 句符合人物个性、关系与场景推进的自然回应。")
+            lines.append("最近对话:")
+            lines.extend(f"- {line}" for line in history_lines)
+        lines.append("本轮已发生:")
+        lines.extend(f"- {line}" for line in turn_lines)
+        lines.append("请输出 1 到 3 句符合人物个性、关系与场景推进的自然回应。")
+        return lines
 
-        return [
-            {"role": "system", "content": "\n".join(system_lines)},
-            {"role": "user", "content": "\n".join(user_lines)},
-        ]
+    def _render_recent_history(self, session: Dict[str, Any]) -> List[str]:
+        recent_window = session["history"][-self.llm_history_messages :]
+        return [f"{item.get('speaker', '')}: {item.get('message', '')}" for item in recent_window]
 
     @staticmethod
     def _sanitize_generated_reply(responder: str, content: str, fallback_reply: str = "") -> str:
@@ -509,26 +652,26 @@ class ChatEngine:
             self._reflect_last_turn(session)
             return True
         if command.startswith("/correct"):
-            payload = command[len("/correct") :].strip()
-            parts = [p.strip() for p in payload.split("|")]
-            if len(parts) not in (3, 4, 5):
+            payload = self._parse_inline_correction_command(command)
+            if not payload:
                 print("格式错误。用法: /correct 角色|对象|原句|修正句|原因")
                 return True
-            if len(parts) == 3:
-                character, target, original, corrected, reason = parts[0], "", parts[1], parts[2], "inline_command"
-            elif len(parts) == 4:
-                character, target, original, corrected, reason = parts[0], parts[1], parts[2], parts[3], "inline_command"
-            else:
-                character, target, original, corrected, reason = parts[0], parts[1], parts[2], parts[3], parts[4]
             item = self.reflection.save_correction(
                 session_id=session["id"],
-                character=character,
-                target=target or None,
-                original_message=original,
-                corrected_message=corrected,
-                reason=reason,
+                character=payload["character"],
+                target=payload["target"] or None,
+                original_message=payload["original"],
+                corrected_message=payload["corrected"],
+                reason=payload["reason"],
             )
-            self._persist_correction_memory(session, character, target, original, corrected, reason)
+            self._persist_correction_memory(
+                session,
+                payload["character"],
+                payload["target"],
+                payload["original"],
+                payload["corrected"],
+                payload["reason"],
+            )
             self.logger.info(
                 "纠错已记录: %s -> %s",
                 item["character"],
@@ -536,6 +679,26 @@ class ChatEngine:
             )
             return True
         return False
+
+    @staticmethod
+    def _parse_inline_correction_command(command: str) -> Optional[Dict[str, str]]:
+        payload = command[len("/correct") :].strip()
+        parts = [p.strip() for p in payload.split("|")]
+        if len(parts) not in (3, 4, 5):
+            return None
+        if len(parts) == 3:
+            character, target, original, corrected, reason = parts[0], "", parts[1], parts[2], "inline_command"
+        elif len(parts) == 4:
+            character, target, original, corrected, reason = parts[0], parts[1], parts[2], parts[3], "inline_command"
+        else:
+            character, target, original, corrected, reason = parts[0], parts[1], parts[2], parts[3], parts[4]
+        return {
+            "character": character,
+            "target": target,
+            "original": original,
+            "corrected": corrected,
+            "reason": reason,
+        }
 
     def _reflect_last_turn(self, session: Dict[str, Any]) -> None:
         if not session["history"]:
@@ -746,76 +909,75 @@ class ChatEngine:
             loaded = True
         return merged if loaded else None
 
-    def _load_profile_markdown(self, path: Path) -> Dict[str, Any]:
-        parsed = self._parse_persona_markdown(path)
+    @classmethod
+    def _empty_profile(cls, *, path: Optional[Path] = None) -> Dict[str, Any]:
+        parent = path.parent if path else Path()
+        grandparent = parent.parent if path else Path()
         profile: Dict[str, Any] = {
-            "name": parsed.get("name", path.parent.name),
-            "novel_id": parsed.get("novel_id", path.parent.parent.name),
-            "source_path": parsed.get("source_path", ""),
-            "core_traits": self._split_persona_value(parsed.get("core_traits", "")),
-            "values": self._split_metric_map(parsed.get("values", "")),
-            "speech_style": parsed.get("speech_style", ""),
-            "typical_lines": self._split_persona_value(parsed.get("typical_lines", "")),
-            "decision_rules": self._split_persona_value(parsed.get("decision_rules", "")),
-            "identity_anchor": parsed.get("identity_anchor", ""),
-            "soul_goal": parsed.get("soul_goal", ""),
-            "life_experience": self._split_persona_value(parsed.get("life_experience", "")),
-            "trauma_scar": parsed.get("trauma_scar", ""),
-            "worldview": parsed.get("worldview", ""),
-            "thinking_style": parsed.get("thinking_style", ""),
-            "temperament_type": parsed.get("temperament_type", ""),
-            "core_identity": parsed.get("core_identity", ""),
-            "faction_position": parsed.get("faction_position", ""),
-            "background_imprint": parsed.get("background_imprint", ""),
-            "world_rule_fit": parsed.get("world_rule_fit", ""),
-            "social_mode": parsed.get("social_mode", ""),
-            "hidden_desire": parsed.get("hidden_desire", ""),
-            "inner_conflict": parsed.get("inner_conflict", ""),
-            "story_role": parsed.get("story_role", ""),
-            "belief_anchor": parsed.get("belief_anchor", ""),
-            "moral_bottom_line": parsed.get("moral_bottom_line", ""),
-            "self_cognition": parsed.get("self_cognition", ""),
-            "stress_response": parsed.get("stress_response", ""),
-            "others_impression": parsed.get("others_impression", ""),
-            "restraint_threshold": parsed.get("restraint_threshold", ""),
-            "private_self": parsed.get("private_self", ""),
-            "stance_stability": parsed.get("stance_stability", ""),
-            "reward_logic": parsed.get("reward_logic", ""),
-            "strengths": self._split_persona_value(parsed.get("strengths", "")),
-            "weaknesses": self._split_persona_value(parsed.get("weaknesses", "")),
-            "cognitive_limits": self._split_persona_value(parsed.get("cognitive_limits", "")),
-            "fear_triggers": self._split_persona_value(parsed.get("fear_triggers", "")),
-            "key_bonds": self._split_persona_value(parsed.get("key_bonds", "")),
-            "action_style": parsed.get("action_style", ""),
-            "arc_summary": parsed.get("arc_summary", ""),
-            "arc_confidence": self._safe_int(parsed.get("arc_confidence", 0)),
+            "name": parent.name if path else "",
+            "novel_id": grandparent.name if path else "",
+            "source_path": "",
             "speech_habits": {
-                "cadence": parsed.get("cadence", ""),
-                "signature_phrases": self._split_persona_value(parsed.get("signature_phrases", "")),
-                "sentence_openers": self._split_persona_value(parsed.get("sentence_openers", "")),
-                "connective_tokens": self._split_persona_value(parsed.get("connective_tokens", "")),
-                "sentence_endings": self._split_persona_value(parsed.get("sentence_endings", "")),
-                "forbidden_fillers": self._split_persona_value(parsed.get("forbidden_fillers", "")),
+                "cadence": "",
+                "signature_phrases": [],
+                "sentence_openers": [],
+                "connective_tokens": [],
+                "sentence_endings": [],
+                "forbidden_fillers": [],
             },
             "emotion_profile": {
-                "anger_style": parsed.get("anger_style", ""),
-                "joy_style": parsed.get("joy_style", ""),
-                "grievance_style": parsed.get("grievance_style", ""),
+                "anger_style": "",
+                "joy_style": "",
+                "grievance_style": "",
             },
-            "taboo_topics": self._split_persona_value(parsed.get("taboo_topics", "")),
-            "forbidden_behaviors": self._split_persona_value(parsed.get("forbidden_behaviors", "")),
             "arc": {
-                "start": self._split_metric_map(parsed.get("arc_start", "")),
-                "mid": self._split_metric_map(parsed.get("arc_mid", "")),
-                "end": self._split_metric_map(parsed.get("arc_end", "")),
+                "start": {},
+                "mid": {},
+                "end": {},
             },
             "evidence": {
-                "description_count": self._safe_int(parsed.get("description_count", 0)),
-                "dialogue_count": self._safe_int(parsed.get("dialogue_count", 0)),
-                "thought_count": self._safe_int(parsed.get("thought_count", 0)),
-                "chunk_count": self._safe_int(parsed.get("chunk_count", 0)),
+                "description_count": 0,
+                "dialogue_count": 0,
+                "thought_count": 0,
+                "chunk_count": 0,
             },
         }
+        for key in cls.PERSONA_SCALAR_FIELDS:
+            profile.setdefault(key, "")
+        for key in cls.PERSONA_LIST_FIELDS:
+            profile.setdefault(key, [])
+        for key in cls.PERSONA_METRIC_FIELDS:
+            profile.setdefault(key, {})
+        for key in cls.PERSONA_INT_FIELDS:
+            profile.setdefault(key, 0)
+        return profile
+
+    def _load_profile_markdown(self, path: Path) -> Dict[str, Any]:
+        parsed = self._parse_persona_markdown(path)
+        profile = self._empty_profile(path=path)
+        profile["name"] = parsed.get("name", profile["name"])
+        profile["novel_id"] = parsed.get("novel_id", profile["novel_id"])
+        profile["source_path"] = parsed.get("source_path", "")
+        for key in self.PERSONA_LIST_FIELDS:
+            profile[key] = self._split_persona_value(parsed.get(key, ""))
+        for key in self.PERSONA_SCALAR_FIELDS:
+            profile[key] = parsed.get(key, "")
+        for key in self.PERSONA_METRIC_FIELDS:
+            profile[key] = self._split_metric_map(parsed.get(key, ""))
+        for key in self.PERSONA_INT_FIELDS:
+            profile[key] = self._safe_int(parsed.get(key, 0))
+        for key, (parent, child, value_type) in self.PERSONA_NESTED_FIELDS.items():
+            bucket = dict(profile.get(parent, {}))
+            raw = parsed.get(key, "")
+            if value_type == "list":
+                bucket[child] = self._split_persona_value(raw)
+            elif value_type == "metric":
+                bucket[child] = self._split_metric_map(raw)
+            elif value_type == "int":
+                bucket[child] = self._safe_int(raw)
+            else:
+                bucket[child] = raw
+            profile[parent] = bucket
         return profile
 
     def _merge_profile_markdown_data(
@@ -999,67 +1161,7 @@ class ChatEngine:
 
     def _apply_persona_overrides(self, profile: Dict[str, Any], parsed: Dict[str, Any]) -> Dict[str, Any]:
         merged = dict(profile)
-        list_fields = {
-            "core_traits",
-            "typical_lines",
-            "decision_rules",
-            "signature_phrases",
-            "sentence_openers",
-            "connective_tokens",
-            "sentence_endings",
-            "forbidden_fillers",
-            "taboo_topics",
-            "forbidden_behaviors",
-            "strengths",
-            "weaknesses",
-            "cognitive_limits",
-            "fear_triggers",
-            "key_bonds",
-            "user_edits",
-            "notable_interactions",
-            "relationship_updates",
-            "canon_memory",
-        }
-        dict_targets = {
-            "cadence": ("speech_habits", "cadence"),
-            "signature_phrases": ("speech_habits", "signature_phrases"),
-            "sentence_openers": ("speech_habits", "sentence_openers"),
-            "connective_tokens": ("speech_habits", "connective_tokens"),
-            "sentence_endings": ("speech_habits", "sentence_endings"),
-            "forbidden_fillers": ("speech_habits", "forbidden_fillers"),
-            "anger_style": ("emotion_profile", "anger_style"),
-            "joy_style": ("emotion_profile", "joy_style"),
-            "grievance_style": ("emotion_profile", "grievance_style"),
-        }
-        direct_fields = {
-            "identity_anchor",
-            "soul_goal",
-            "speech_style",
-            "thinking_style",
-            "worldview",
-            "life_experience",
-            "trauma_scar",
-            "temperament_type",
-            "core_identity",
-            "faction_position",
-            "background_imprint",
-            "world_rule_fit",
-            "social_mode",
-            "hidden_desire",
-            "inner_conflict",
-            "story_role",
-            "belief_anchor",
-            "moral_bottom_line",
-            "self_cognition",
-            "stress_response",
-            "others_impression",
-            "restraint_threshold",
-            "private_self",
-            "stance_stability",
-            "reward_logic",
-            "action_style",
-            "arc_summary",
-        }
+        overlay_list_fields = set(self.PERSONA_LIST_FIELDS) | {"user_edits", "notable_interactions", "relationship_updates", "canon_memory"}
 
         for key, value in parsed.items():
             if not value:
@@ -1067,19 +1169,29 @@ class ChatEngine:
             if key == "canon_memory":
                 merged["life_experience"] = self._split_persona_value(value)
                 continue
-            if key in dict_targets:
-                parent, child = dict_targets[key]
+            if key in self.PERSONA_NESTED_FIELDS:
+                parent, child, value_type = self.PERSONA_NESTED_FIELDS[key]
                 bucket = dict(merged.get(parent, {})) if isinstance(merged.get(parent, {}), dict) else {}
-                bucket[child] = self._split_persona_value(value) if key in list_fields else value
+                if value_type == "list":
+                    bucket[child] = self._split_persona_value(value)
+                elif value_type == "metric":
+                    bucket[child] = self._split_metric_map(value)
+                elif value_type == "int":
+                    bucket[child] = self._safe_int(value)
+                else:
+                    bucket[child] = value
                 merged[parent] = bucket
                 continue
-            if key in direct_fields:
-                if key == "life_experience":
-                    merged[key] = self._split_persona_value(value)
-                else:
-                    merged[key] = value
+            if key in self.PERSONA_SCALAR_FIELDS:
+                merged[key] = value
                 continue
-            if key in list_fields:
+            if key in self.PERSONA_METRIC_FIELDS:
+                merged[key] = self._split_metric_map(value)
+                continue
+            if key in self.PERSONA_INT_FIELDS:
+                merged[key] = self._safe_int(value)
+                continue
+            if key in overlay_list_fields:
                 merged[key] = self._split_persona_value(value)
         return merged
 
@@ -1156,7 +1268,7 @@ class ChatEngine:
                     "hostility": int(disk.get("hostility", max(0, 5 - int(disk.get("affection", 5))))),
                     "ambiguity": int(disk.get("ambiguity", 3)),
                 }
-                for key in ("conflict_point", "typical_interaction", "appellations"):
+                for key in ("conflict_point", "typical_interaction", "relation_change", "hidden_attitude", "appellations"):
                     if key in disk:
                         state[key] = disk[key]
                 matrix[self._pair_key(speaker, target)] = state
@@ -1199,7 +1311,7 @@ class ChatEngine:
                     merged[key] = int(overlay[key])
                 except (TypeError, ValueError):
                     pass
-        for key in ("conflict_point", "typical_interaction"):
+        for key in ("conflict_point", "typical_interaction", "relation_change", "hidden_attitude"):
             if overlay.get(key):
                 merged[key] = overlay[key]
         appellation = overlay.get("appellation_to_target", "")

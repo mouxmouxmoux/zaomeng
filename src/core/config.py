@@ -88,7 +88,7 @@ class Config:
         "relationships": {
             "dimensions": [
                 "trust", "affection", "power_gap", 
-                "conflict_point", "typical_interaction"
+                "conflict_point", "typical_interaction", "hidden_attitude", "relation_change"
             ]
         },
         "chat_engine": {

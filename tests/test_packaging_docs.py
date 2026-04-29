@@ -15,7 +15,7 @@ class PackagingDocsTests(unittest.TestCase):
         self.assertNotIn("runtime/zaomeng_cli.py", manifest_text)
         self.assertNotIn("runtime/src", manifest_text)
 
-    def test_install_docs_describe_prompt_first_install_and_optional_runtime(self):
+    def test_install_docs_describe_prompt_first_install(self):
         install_text = Path("clawhub-zaomeng-skill/INSTALL.md").read_text(encoding="utf-8")
         self.assertIn("宿主驱动的 skill 包", install_text)
         self.assertIn("requirements.txt", install_text)
@@ -25,9 +25,7 @@ class PackagingDocsTests(unittest.TestCase):
         self.assertNotIn("runtime/src", install_text)
         self.assertNotIn("--include-runtime", install_text)
 
-    def test_readmes_describe_prompt_first_helpers_and_cli_separation(self):
-        root_readme = Path("README.md").read_text(encoding="utf-8")
-        root_readme_en = Path("README.en.md").read_text(encoding="utf-8")
+    def test_readmes_describe_prompt_first_helpers(self):
         skill_readme = Path("clawhub-zaomeng-skill/README.md").read_text(encoding="utf-8")
         skill_readme_en = Path("clawhub-zaomeng-skill/README_EN.md").read_text(encoding="utf-8")
 
@@ -66,23 +64,38 @@ class PackagingDocsTests(unittest.TestCase):
     def test_distillation_docs_require_multi_character_differentiation(self):
         prompt_text = Path("clawhub-zaomeng-skill/prompts/distill_prompt.md").read_text(encoding="utf-8")
         schema_text = Path("clawhub-zaomeng-skill/references/output_schema.md").read_text(encoding="utf-8")
+        validation_text = Path("clawhub-zaomeng-skill/references/validation_policy.md").read_text(encoding="utf-8")
 
         self.assertIn("多角色蒸馏差分要求", prompt_text)
         self.assertIn("这个角色与同批其他角色最不同的地方是什么", prompt_text)
         self.assertIn("共享场景优先用于提取 `key_bonds`", prompt_text)
         self.assertIn("输出前至少做一次区分度自检", prompt_text)
-
-        self.assertIn("易混字段收紧定义", schema_text)
-        self.assertIn("identity_anchor", schema_text)
-        self.assertIn("background_imprint", schema_text)
-        self.assertIn("soul_goal", schema_text)
-        self.assertIn("temperament_type", schema_text)
-        self.assertIn("stress_response", schema_text)
-        self.assertIn("restraint_threshold", schema_text)
-        self.assertIn("temperament_type", prompt_text)
-        self.assertIn("moral_bottom_line", prompt_text)
-        self.assertIn("self_cognition", prompt_text)
         self.assertIn("rules/character_hints/<novel_id>.md", prompt_text)
+
+        self.assertIn("统一标尺", schema_text)
+        self.assertIn("world_belong", schema_text)
+        self.assertIn("rule_view", schema_text)
+        self.assertIn("plot_restriction", schema_text)
+        self.assertIn("appearance_feature", schema_text)
+        self.assertIn("habit_action", schema_text)
+        self.assertIn("interest_claim", schema_text)
+        self.assertIn("resource_dependence", schema_text)
+        self.assertIn("trade_principle", schema_text)
+        self.assertIn("carry_style", schema_text)
+        self.assertIn("disguise_switch", schema_text)
+        self.assertIn("ooc_redline", schema_text)
+        self.assertIn("evidence_source", schema_text)
+        self.assertIn("contradiction_note", schema_text)
+        self.assertIn("timeline_stage", schema_text)
+        self.assertIn("relation_change", schema_text)
+        self.assertIn("hidden_attitude", schema_text)
+        self.assertIn("原作优先原则", schema_text)
+        self.assertIn("公平蒸馏规则", schema_text)
+
+        self.assertIn("原作优先", validation_text)
+        self.assertIn("差分校验", validation_text)
+        self.assertIn("evidence_source", validation_text)
+        self.assertIn("interest_claim", validation_text)
 
 
 if __name__ == "__main__":

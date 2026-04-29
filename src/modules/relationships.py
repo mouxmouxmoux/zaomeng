@@ -205,6 +205,13 @@ class RelationshipExtractor:
                 "ambiguity": max(0, 7 - abs(affection - trust) - min(2, interaction_bonus)),
                 "conflict_point": self._mode_text(bucket["conflict_points"], default="立场差异"),
                 "typical_interaction": self._mode_text(bucket["interactions"], default="试探 -> 回应 -> 暂时收束"),
+                "relation_change": self._infer_relation_change(trust, affection, conflict_penalty, interaction_bonus),
+                "hidden_attitude": self._infer_hidden_attitude(
+                    trust,
+                    affection,
+                    min(10, max(0, 5 - affection) + conflict_penalty),
+                    self._mode_text(bucket["conflict_points"], default=""),
+                ),
                 "appellations": {
                     direction: self._mode_text(terms, default="")
                     for direction, terms in bucket["appellations"].items()
@@ -758,6 +765,8 @@ class RelationshipExtractor:
                     f"- power_gap: {payload.get('power_gap', 0)}",
                     f"- conflict_point: {payload.get('conflict_point', '')}",
                     f"- typical_interaction: {payload.get('typical_interaction', '')}",
+                    f"- hidden_attitude: {payload.get('hidden_attitude', '')}",
+                    f"- relation_change: {payload.get('relation_change', '')}",
                     f"- appellation_to_target: {appellation_to_target}",
                     "",
                 ]
@@ -795,6 +804,26 @@ class RelationshipExtractor:
         if not counter:
             return default
         return sorted(counter.items(), key=lambda item: item[1], reverse=True)[0][0]
+
+    @staticmethod
+    def _infer_relation_change(trust: int, affection: int, conflict_penalty: int, interaction_bonus: int) -> str:
+        if conflict_penalty >= 2 and affection <= 4:
+            return "恶化"
+        if affection >= 7 and trust >= 7 and interaction_bonus >= 1:
+            return "升温"
+        if conflict_penalty >= 1 and affection >= 6:
+            return "反复波动"
+        return "固化"
+
+    @staticmethod
+    def _infer_hidden_attitude(trust: int, affection: int, hostility: int, conflict_point: str) -> str:
+        if affection >= 7 and trust >= 6 and conflict_point:
+            return "表面未必挑明，私下仍明显在意对方态度"
+        if hostility >= 6:
+            return "表面可以周旋，私下戒备和疏离感更重"
+        if trust >= 7:
+            return "嘴上未必多说，实际更愿意向对方让步或靠近"
+        return ""
 
     @staticmethod
     def _pair_key(a: str, b: str) -> str:

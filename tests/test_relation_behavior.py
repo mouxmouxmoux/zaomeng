@@ -600,6 +600,18 @@ class RelationBehaviorTests(unittest.TestCase):
                 root,
                 "mini",
                 "\u6797\u9edb\u7389",
+                timeline_stage="\u524d\u671f",
+                role_tags=["\u6838\u5fc3\u4e3b\u89d2", "\u60b2\u5267\u578b"],
+                world_belong="\u8d3e\u5e9c\u5185\u5b85",
+                rule_view="\u8868\u9762\u987a\u7740\u95fa\u9601\u79e9\u5e8f\uff0c\u5b9e\u5219\u5bf9\u4eba\u60c5\u51b7\u6696\u66f4\u654f\u611f",
+                appearance_feature="\u8eab\u5f62\u7626\u524a\uff0c\u7709\u76ee\u95f4\u5e38\u5e26\u75c5\u610f\u4e0e\u51b7\u610f\u3002",
+                habit_action="\u8bdd\u5230\u5fc3\u4e8b\u65f6\u5148\u987f\u4e00\u987f\uff0c\u518d\u8f7b\u8f7b\u53cd\u95ee\u3002",
+                interest_claim="\u5b88\u4f4f\u81ea\u5c0a\u3001\u771f\u5fc3\u4e0e\u5c11\u6570\u91cd\u8981\u5173\u7cfb",
+                carry_style="\u5bf9\u5916\u4eba\u5148\u51b7\u7740\uff0c\u5bf9\u5728\u610f\u4e4b\u4eba\u53cd\u800c\u66f4\u5bb9\u6613\u9732\u51fa\u5c16\u9510",
+                emotion_model="\u60c5\u7eea\u6765\u5f97\u7ec6\u5bc6\uff0c\u591a\u85cf\u5728\u8bed\u6c14\u548c\u8ddd\u79bb\u91cc\u3002",
+                ooc_redline="\u4e0d\u4f1a\u65e0\u7f18\u65e0\u6545\u5730\u8f7b\u8d31\u771f\u5fc3\uff0c\u4e5f\u4e0d\u4f1a\u7a81\u7136\u53d8\u6210\u70ed\u70c8\u5f20\u626c\u7684\u4eba\u3002",
+                evidence_source="chunk_01\uff1bchunk_03",
+                contradiction_note="\u524d\u671f\u66f4\u504f\u8bd5\u63a2\uff0c\u60c5\u611f\u88ab\u523a\u4e2d\u65f6\u8bdd\u4f1a\u66f4\u9510\u3002",
                 temperament_type="\u9ad8\u654f\u611f\u3001\u5916\u51b7\u5185\u70ed\u578b",
                 trauma_scar="\u5bc4\u5c45\u4e0e\u5931\u6043\u7559\u4e0b\u7684\u65e7\u4f24\uff0c\u5728\u88ab\u8f7b\u6162\u65f6\u4f1a\u660e\u663e\u53d1\u4f5c\u3002",
                 moral_bottom_line="\u4e0d\u80fd\u62ff\u771f\u5fc3\u4e0e\u65e0\u8f9c\u8005\u5f53\u7b79\u7801\u3002",
@@ -613,6 +625,18 @@ class RelationBehaviorTests(unittest.TestCase):
             loaded = engine._load_profile_markdown(persona_dir / "PROFILE.md")
 
             self.assertEqual(loaded["temperament_type"], "\u9ad8\u654f\u611f\u3001\u5916\u51b7\u5185\u70ed\u578b")
+            self.assertEqual(loaded["timeline_stage"], "\u524d\u671f")
+            self.assertIn("\u60b2\u5267\u578b", loaded["role_tags"])
+            self.assertIn("\u8d3e\u5e9c", loaded["world_belong"])
+            self.assertIn("\u987a\u7740", loaded["rule_view"])
+            self.assertIn("\u7626\u524a", loaded["appearance_feature"])
+            self.assertIn("\u53cd\u95ee", loaded["habit_action"])
+            self.assertIn("\u771f\u5fc3", loaded["interest_claim"])
+            self.assertIn("\u5916\u4eba", loaded["carry_style"])
+            self.assertIn("\u8bed\u6c14", loaded["emotion_model"])
+            self.assertIn("\u8f7b\u8d31", loaded["ooc_redline"])
+            self.assertIn("chunk_01", loaded["evidence_source"])
+            self.assertIn("\u524d\u671f", loaded["contradiction_note"])
             self.assertIn("\u65e7\u4f24", loaded["trauma_scar"])
             self.assertIn("\u65e0\u8f9c\u8005", loaded["moral_bottom_line"])
             self.assertIn("\u81ea\u5df1\u654f\u611f", loaded["self_cognition"])
@@ -640,7 +664,7 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertTrue(any("\u4e54\u5bb6\u52b2" in line for line in evidence_map["\u4e54\u5bb6\u52b2"]["descriptions"]))
         self.assertTrue(any("\u5730\u9f20" in line for line in evidence_map["\u5730\u9f20"]["thoughts"]))
 
-    def test_distiller_uses_archetype_constraints_for_extended_persona_fields(self):
+    def test_distiller_builds_evidence_first_profile_scaffold(self):
         distiller = self.make_runtime_parts(Config())["distiller"]
 
         with patch.object(distiller, "_infer_archetype", return_value="steady_supporter"):
@@ -655,16 +679,13 @@ class RelationBehaviorTests(unittest.TestCase):
                 arc_values=[],
             )
 
-        self.assertIn("\u6c89\u7a33", profile["temperament_type"])
-        self.assertTrue(
-            any(token in profile["temperament_type"] for token in ("\u6258\u5e95", "\u63a5\u5e94", "\u8010\u538b"))
-        )
-        self.assertTrue(profile["trauma_scar"].strip())
-        self.assertTrue(profile["moral_bottom_line"].strip())
-        self.assertTrue(profile["self_cognition"].strip())
-        self.assertTrue(profile["stress_response"].strip())
-        self.assertTrue(profile["others_impression"].strip())
-        self.assertTrue(profile["restraint_threshold"].strip())
+        self.assertEqual(profile["archetype"], "steady_supporter")
+        self.assertTrue(profile["core_traits"])
+        self.assertTrue(profile["decision_rules"])
+        self.assertTrue(profile["life_experience"])
+        self.assertTrue(profile["background_imprint"])
+        self.assertTrue(profile["arc_summary"].strip())
+        self.assertIn("\u5173\u7fbd", "".join(profile["life_experience"]))
 
     def test_distiller_loads_character_hints_from_novel_specific_rules_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1217,6 +1238,8 @@ class RelationBehaviorTests(unittest.TestCase):
                         "power_gap": 0,
                         "conflict_point": "\u540c\u76df\u53d6\u820d",
                         "typical_interaction": "\u5148\u8bae\u8f7b\u91cd\uff0c\u518d\u5b9a\u8fdb\u9000",
+                        "hidden_attitude": "\u8868\u9762\u7a33\u4f4f\u5927\u5c40\uff0c\u79c1\u4e0b\u66f4\u5728\u610f\u5173\u7fbd\u662f\u5426\u7ad9\u4f4f",
+                        "relation_change": "\u5347\u6e29",
                         "appellations": {"\u5218\u5907->\u5173\u7fbd": "\u4e8c\u5f1f"},
                     }
                 },
@@ -1228,8 +1251,13 @@ class RelationBehaviorTests(unittest.TestCase):
             nav_text = (root / "characters" / "mini" / "\u5218\u5907" / "NAVIGATION.generated.md").read_text(
                 encoding="utf-8"
             )
+            relation_text = (root / "characters" / "mini" / "\u5218\u5907" / "RELATIONS.generated.md").read_text(
+                encoding="utf-8"
+            )
             self.assertIn("## RELATIONS", nav_text)
             self.assertIn("- status: active", nav_text)
+            self.assertIn("hidden_attitude", relation_text)
+            self.assertIn("relation_change", relation_text)
 
     def test_relation_markdown_override_changes_runtime_relation_state(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1821,7 +1849,7 @@ class RelationBehaviorTests(unittest.TestCase):
         self.assertIn("identity_anchor is identical to", capture_llm.messages[1]["content"])
         self.assertIn("\u4e54\u5bb6\u52b2", capture_llm.messages[1]["content"])
 
-    def test_distiller_local_refine_rewrites_generic_duplicate_fields(self):
+    def test_distiller_local_refine_preserves_profile_when_local_rewrite_is_disabled(self):
         distiller = self.make_runtime_parts(Config())["distiller"]
         profile = {
             "name": "\u6797\u9edb\u7389",
@@ -1857,12 +1885,11 @@ class RelationBehaviorTests(unittest.TestCase):
             ],
         )
 
-        self.assertNotEqual(refined["speech_style"], profile["speech_style"])
-        self.assertNotEqual(refined["inner_conflict"], profile["inner_conflict"])
-        self.assertNotEqual(refined["private_self"], profile["private_self"])
-        self.assertTrue(any(token in refined["inner_conflict"] for token in ("\u88ab\u7406\u89e3", "\u773c\u524d\u5c40\u9762", "\u60f3\u5b88\u4f4f")))
-        self.assertIn("\u8f7b\u8d31\u771f\u5fc3", refined["moral_bottom_line"])
-        self.assertTrue(refined["self_cognition"])
+        self.assertEqual(refined["speech_style"], profile["speech_style"])
+        self.assertEqual(refined["inner_conflict"], profile["inner_conflict"])
+        self.assertEqual(refined["private_self"], profile["private_self"])
+        self.assertEqual(refined["moral_bottom_line"], profile["moral_bottom_line"])
+        self.assertEqual(refined["self_cognition"], profile["self_cognition"])
 
     def test_text_parser_prefers_gbk_for_chinese_txt(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1874,7 +1901,7 @@ class RelationBehaviorTests(unittest.TestCase):
             self.assertIn("\u8d3e\u5b9d\u7389", text)
             self.assertIn("\u6797\u9edb\u7389", text)
 
-    def test_distiller_local_second_pass_rewrites_duplicate_generic_fields(self):
+    def test_distiller_without_llm_second_pass_preserves_draft_profile(self):
         distiller = self.make_runtime_parts(Config())["distiller"]
         profile = {
             "name": "\u6797\u9edb\u7389",
@@ -1915,10 +1942,9 @@ class RelationBehaviorTests(unittest.TestCase):
             ],
         )
 
-        self.assertNotEqual(refined["identity_anchor"], profile["identity_anchor"])
-        self.assertNotEqual(refined["soul_goal"], profile["soul_goal"])
-        self.assertIn("\u5fc3\u4e0b\u53c8\u9178\u53c8\u75db", refined["identity_anchor"])
-        self.assertTrue(any(token in refined["soul_goal"] for token in ("\u62a4", "\u5b88", "\u7a33\u4f4f")))
+        self.assertEqual(refined["identity_anchor"], profile["identity_anchor"])
+        self.assertEqual(refined["soul_goal"], profile["soul_goal"])
+        self.assertEqual(refined["social_mode"], profile["social_mode"])
 
     def test_speaker_does_not_dump_rule_or_goal_text_verbatim(self):
         speaker = self.make_runtime_parts(Config())["speaker"]
