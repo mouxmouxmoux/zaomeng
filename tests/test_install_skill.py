@@ -11,6 +11,7 @@ class InstallSkillTests(unittest.TestCase):
     def test_iter_skill_entries_only_lists_prompt_first_assets(self):
         entries = iter_skill_entries()
         self.assertIn("SKILL.md", entries)
+        self.assertIn("requirements.txt", entries)
         self.assertIn("tools", entries)
         self.assertNotIn("runtime", entries)
 
@@ -21,6 +22,7 @@ class InstallSkillTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             dst = copy_skill_bundle(packaged_src, Path(tmpdir), "zaomeng-skill")
             self.assertTrue((dst / "SKILL.md").exists())
+            self.assertTrue((dst / "requirements.txt").exists())
             self.assertTrue((dst / "prompts").exists())
             self.assertTrue((dst / "references").exists())
             self.assertTrue((dst / "tools" / "prepare_novel_excerpt.py").exists())

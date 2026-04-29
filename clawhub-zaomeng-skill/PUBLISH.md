@@ -5,13 +5,14 @@
 - Type: OpenClaw Skill
 - Name: zaomeng-skill
 - Display Name: 造梦技能
-- Version: 4.0.0
+- Version: 4.0.1
 - License: MIT-0
 - Category: Writing / Roleplay / Character Simulation
 
 ## 风险说明
 
 - 这是一个以 prompt-first 资产为主的 skill 包
+- skill 包内已携带 `requirements.txt`，声明 Python 依赖版本边界
 - 仍依赖本地 Python 执行，以及 Python 包信任链：`PyYAML`，可选 `tiktoken`，可选 `ebooklib`
 - 已包含显式安全策略
 
@@ -25,6 +26,7 @@
 
 ## 版本说明
 
+- `4.0.1`：补充 skill 包内 `requirements.txt`，明确 Python 依赖版本边界，并将安装、清单与发布文档同步到依赖文件。
 - `4.0.0`：移除 skill 包内置 runtime 与 CLI 入口，skill 资产收敛为宿主驱动的 prompts、references、examples 和 helper scripts，并统一产物为人物档案、关系结果、人物关系图谱与角色对话。
 - `3.3.0`：明确 skill 以宿主驱动的 prompt-first 资产为核心，新增 excerpt 与 prompt payload helper scripts，并统一文档口径到宿主 LLM 工作流。
 - `3.1.0`：将 prompt 引用从纯文本切换为 Markdown，对齐 Markdown-first 人格工作流，在 `references/output_schema.md` 中补充 26 维度人格覆盖说明，并新增 `references/style_differ.md` 与 `references/logic_constraint.md`，用于去同质化和防止人设崩坏。

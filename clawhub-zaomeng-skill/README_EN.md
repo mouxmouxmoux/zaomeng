@@ -87,9 +87,7 @@ python scripts/install_skill.py --skills-dir <your-skills-root>
 To run the real workflow, the host environment should support:
 
 - local Python command execution
-- `PyYAML`
-- `ebooklib` when reading `.epub`
-- optional `tiktoken` for more accurate token estimation
+- the dependencies declared in [requirements.txt](requirements.txt)
 
 The skill now exposes prompt-first helper entrypoints:
 

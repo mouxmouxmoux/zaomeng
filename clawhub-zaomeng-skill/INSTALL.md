@@ -19,6 +19,7 @@
 - `SKILL.md`
 - `MANIFEST.md`
 - `PUBLISH.md`
+- `requirements.txt`
 - `tools/prepare_novel_excerpt.py`
 - `tools/build_prompt_payload.py`
 - `references/output_schema.md`
@@ -31,11 +32,11 @@
 - `examples/sample_relations.md`
 - `examples/test-prompts.json`
 
-## 运行时依赖
+## Python 依赖
 
-- 必需：`PyYAML`
-- 可选：`tiktoken`
-- 可选：`ebooklib`，仅在读取 `.epub` 小说时需要
+- skill 包自带 `requirements.txt`
+- 当前版本边界写在 `requirements.txt` 中
+- 其中 `ebooklib` 用于读取 `.epub` 小说，`tiktoken` 用于更准确的 token 估算
 
 ## 安装建议
 

@@ -15,6 +15,7 @@ PROMPT_FIRST_FILES = (
     "INSTALL.md",
     "MANIFEST.md",
     "PUBLISH.md",
+    "requirements.txt",
 )
 PROMPT_FIRST_DIRS = (
     "prompts",

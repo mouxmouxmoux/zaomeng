@@ -7,6 +7,7 @@ from pathlib import Path
 class PackagingDocsTests(unittest.TestCase):
     def test_manifest_describes_prompt_first_bundle(self):
         manifest_text = Path("clawhub-zaomeng-skill/MANIFEST.md").read_text(encoding="utf-8")
+        self.assertIn("requirements.txt", manifest_text)
         self.assertIn("tools/prepare_novel_excerpt.py", manifest_text)
         self.assertIn("tools/build_prompt_payload.py", manifest_text)
         self.assertIn("人物关系图谱", manifest_text)
@@ -16,6 +17,7 @@ class PackagingDocsTests(unittest.TestCase):
     def test_install_docs_describe_prompt_first_install_and_optional_runtime(self):
         install_text = Path("clawhub-zaomeng-skill/INSTALL.md").read_text(encoding="utf-8")
         self.assertIn("宿主驱动的 skill 包", install_text)
+        self.assertIn("requirements.txt", install_text)
         self.assertIn("tools/prepare_novel_excerpt.py", install_text)
         self.assertIn("tools/build_prompt_payload.py", install_text)
         self.assertNotIn("runtime/src", install_text)
@@ -29,8 +31,10 @@ class PackagingDocsTests(unittest.TestCase):
 
         self.assertIn("tools/prepare_novel_excerpt.py", skill_readme)
         self.assertIn("tools/build_prompt_payload.py", skill_readme)
+        self.assertIn("requirements.txt", skill_readme)
         self.assertIn("tools/prepare_novel_excerpt.py", skill_readme_en)
         self.assertIn("tools/build_prompt_payload.py", skill_readme_en)
+        self.assertIn("requirements.txt", skill_readme_en)
         self.assertNotIn("runtime/zaomeng_cli.py", skill_readme)
         self.assertNotIn("runtime/zaomeng_cli.py", skill_readme_en)
 

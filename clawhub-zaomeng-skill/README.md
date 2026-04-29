@@ -87,9 +87,7 @@ python scripts/install_skill.py --skills-dir <your-skills-root>
 要跑真实工作流，宿主环境至少需要满足这些条件：
 
 - 能执行本地 Python 命令
-- 已安装 `PyYAML`
-- 如果读取 `.epub`，还需要 `ebooklib`
-- 如果需要更准确的 token 估算，可选装 `tiktoken`
+- 已安装 [requirements.txt](requirements.txt) 中声明的依赖
 
 skill 目前已经提供 prompt-first helper 入口：
 

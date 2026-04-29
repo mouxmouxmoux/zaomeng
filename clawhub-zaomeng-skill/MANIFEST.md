@@ -7,6 +7,7 @@
 - `SKILL.md`
 - `INSTALL.md`
 - `PUBLISH.md`
+- `requirements.txt`
 
 ## Helper 脚本
 
